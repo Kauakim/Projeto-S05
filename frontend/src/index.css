@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme {
+  --color-inatel: #003057;
+  --color-inatel-blue: #126ae2;
+  --color-limao: #9acd32;
+  --font-sans: "Plus Jakarta Sans", "Arimo", system-ui, -apple-system, sans-serif;
+}
+
+/* =========================================================
+   SISTEMA DE TEMAS DINÂMICOS (Inatel / Limão / Dark)
+   Evolução acessível dos 3 temas originais da disciplina S05
+   ========================================================= */
+:root,
+[data-theme="inatel"] {
+  --bg-page: #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-muted: #f8fafc;
+  --bg-header: #003057;
+  --bg-header-accent: #0a4478;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-on-header: #ffffff;
+  --border-subtle: #e2e8f0;
+  --brand-primary: #126ae2;
+  --brand-primary-hover: #0d56bd;
+  --brand-soft: #dbeafe;
+  --brand-soft-text: #1e40af;
+}
+
+[data-theme="limao"] {
+  --bg-page: #f4fce3;
+  --bg-surface: #ffffff;
+  --bg-muted: #ecfccb;
+  --bg-header: #38184c;
+  --bg-header-accent: #4e2269;
+  --text-primary: #1e1b4b;
+  --text-secondary: #3f6212;
+  --text-on-header: #f7fee7;
+  --border-subtle: #d9f99d;
+  --brand-primary: #4d7c0f;
+  --brand-primary-hover: #3f6212;
+  --brand-soft: #ecfccb;
+  --brand-soft-text: #365314;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0b1120;
+  --bg-surface: #131c2e;
+  --bg-muted: #1e293b;
+  --bg-header: #070b14;
+  --bg-header-accent: #152238;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-on-header: #f8fafc;
+  --border-subtle: #24324a;
+  --brand-primary: #38bdf8;
+  --brand-primary-hover: #0ea5e9;
+  --brand-soft: #172554;
+  --brand-soft-text: #93c5fd;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  transition: background-color 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+.theme-surface {
+  background-color: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.theme-muted {
+  background-color: var(--bg-muted);
+  border-color: var(--border-subtle);
+}
+
+.theme-text-secondary {
+  color: var(--text-secondary);
+}
+
+.theme-header {
+  background-color: var(--bg-header);
+  color: var(--text-on-header);
+}
+
+.theme-btn-primary {
+  background-color: var(--brand-primary);
+  color: #ffffff;
+}
+[data-theme="dark"] .theme-btn-primary {
+  color: #082f49;
+  font-weight: 700;
+}
+.theme-btn-primary:hover {
+  background-color: var(--brand-primary-hover);
+}
+
+.theme-badge-soft {
+  background-color: var(--brand-soft);
+  color: var(--brand-soft-text);
+}
+
+.theme-accent-border {
+  border-left-color: var(--brand-primary);
+}
+
+.theme-accent-text {
+  color: var(--brand-primary);
+}

@@ -1,0 +1,17 @@
+{
+  "name": "inatel-academic-portal",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Portal Acadêmico Inatel (S05) - React + Tailwind + FastAPI + PostgreSQL",
+  "scripts": {
+    "start": "concurrently -k -n BACK,FRONT -c cyan.bold,green.bold \"npm:back\" \"npm:front\"",
+    "back": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const cands=[path.resolve('backend/.venv/Scripts/python.exe'),path.resolve('backend/.venv/bin/python')];const py=cands.find(p=>fs.existsSync(p))||'python';const proc=cp.spawn(py,['-m','uvicorn','main:app','--reload','--port','8000'],{cwd:path.resolve('backend'),stdio:'inherit'});proc.on('exit',c=>process.exit(c??0));\"",
+    "front": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
