@@ -13,11 +13,6 @@ export default function LinkedInAnalyzerSection({
   const [linkedinUrl, setLinkedinUrl] = useState(
     analise?.linkedin_url || usuario?.linkedin || ''
   );
-  const [sincronizarAreas, setSincronizarAreas] = useState(true);
-  const [mostrarOpcoesApi, setMostrarOpcoesApi] = useState(false);
-  const [scrapingdogKey, setScrapingdogKey] = useState('');
-  const [apifyToken, setApifyToken] = useState('');
-  const [rapidapiKey, setRapidapiKey] = useState('');
   const [coletando, setColetando] = useState(false);
   const [abaSecoes, setAbaSecoes] = useState('todas');
 
@@ -35,10 +30,7 @@ export default function LinkedInAnalyzerSection({
     try {
       const resultado = await api.analisarPerfilLinkedIn({
         linkedin_url: linkedinUrl,
-        sincronizar_areas: sincronizarAreas,
-        scrapingdog_key: scrapingdogKey,
-        apify_token: apifyToken,
-        rapidapi_key: rapidapiKey,
+        sincronizar_areas: true,
       });
       onAnaliseAtualizada(resultado);
       if (onRefreshUsuario) {
@@ -52,20 +44,6 @@ export default function LinkedInAnalyzerSection({
     } finally {
       setColetando(false);
     }
-  };
-
-  const handleExportarJson = () => {
-    if (!analise) return;
-    const blob = new Blob([JSON.stringify(analise, null, 2)], {
-      type: 'application/json;charset=utf-8',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `analise_linkedin_${analise.slug || 'perfil'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    onNotify('JSON completo da análise exportado!');
   };
 
   const score = analise?.pontuacao_perfil || 0;
@@ -139,145 +117,43 @@ export default function LinkedInAnalyzerSection({
   return (
     <div className="space-y-6">
       {/* ==========================================
-          1. BARRA DE ENTRADA DO LINK E DISPARO DE SCRAPING
+          1. BARRA DE ENTRADA DO LINK DO PERFIL LINKEDIN
           ========================================== */}
-      <section className="theme-surface border rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
-          <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full theme-badge-soft mb-1.5">
-              <Icon name="link" className="w-3.5 h-3.5" />
-              Extração Direta do Perfil LinkedIn (DOM + Schema.org JSON-LD)
-            </span>
-            <h2 className="text-lg sm:text-xl font-extrabold">
-              Análise Completa de Perfil LinkedIn
-            </h2>
-            <p className="text-xs sm:text-sm theme-text-secondary mt-0.5">
-              Informe o link do seu perfil para extrair diretamente sua foto, capa, sobre,
-              experiências, formação, projetos, certificados, cursos, prêmios, idiomas e posts.
-            </p>
-          </div>
-
-          {analise && (
-            <button
-              type="button"
-              onClick={handleExportarJson}
-              className="shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold theme-muted border flex items-center gap-1.5 hover:opacity-85 cursor-pointer"
-              title="Baixar todos os dados coletados em JSON"
-            >
-              <Icon name="download" className="w-4 h-4" />
-              <span>Exportar JSON Completo</span>
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleAnalisar} className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <label className="text-xs font-bold block mb-1.5">
-                Link do seu Perfil no LinkedIn *
-              </label>
-              <input
-                type="text"
-                required
-                value={linkedinUrl}
-                onChange={(e) => setLinkedinUrl(e.target.value)}
-                placeholder="https://www.linkedin.com/in/seu-usuario"
-                className="w-full theme-muted border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <button
-                type="submit"
-                disabled={coletando}
-                className="w-full sm:w-auto theme-btn-primary px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2 h-[42px]"
-              >
-                {coletando ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    <span>Extraindo seções do LinkedIn...</span>
-                  </>
-                ) : (
-                  <>
-                    <Icon name="chartBar" className="w-4 h-4" />
-                    <span>{analise ? 'Reanalisar Perfil' : 'Analisar Perfil LinkedIn'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sincronizarAreas}
-                onChange={(e) => setSincronizarAreas(e.target.checked)}
-              />
-              <span>
-                Sincronizar automaticamente as skills detectadas com minhas Áreas de Interesse
-              </span>
+      <section className="theme-surface border rounded-2xl p-5 sm:p-6 shadow-xs">
+        <form onSubmit={handleAnalisar} className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-bold block mb-1.5">
+              Link do seu Perfil no LinkedIn *
             </label>
-
-            <div className="flex items-center gap-3 text-xs">
-              <button
-                type="button"
-                onClick={() => setLinkedinUrl('https://www.linkedin.com/in/kaua-ribeiro17')}
-                className="font-semibold theme-accent-text hover:underline cursor-pointer"
-              >
-                Usar meu perfil (kaua-ribeiro17)
-              </button>
-              <button
-                type="button"
-                onClick={() => setMostrarOpcoesApi((v) => !v)}
-                className="font-semibold theme-text-secondary hover:underline cursor-pointer"
-              >
-                {mostrarOpcoesApi
-                  ? 'Ocultar chaves opcionais'
-                  : 'Chaves de API extras (opcional)'}
-              </button>
-            </div>
+            <input
+              type="text"
+              required
+              value={linkedinUrl}
+              onChange={(e) => setLinkedinUrl(e.target.value)}
+              placeholder="https://www.linkedin.com/in/seu-usuario"
+              className="w-full theme-muted border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
-          {mostrarOpcoesApi && (
-            <div className="theme-muted border rounded-xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="sm:col-span-3 theme-text-secondary">
-                <strong>Coleta nativa gratuita já ativa:</strong> o sistema extrai todas as seções
-                públicas sem precisar de chave. Caso queira usar chaves opcionais de terceiros
-                (Scrapingdog, Apify ou RapidAPI), preencha abaixo:
-              </div>
-              <div>
-                <label className="font-bold block mb-1">Scrapingdog Key (opcional)</label>
-                <input
-                  type="password"
-                  value={scrapingdogKey}
-                  onChange={(e) => setScrapingdogKey(e.target.value)}
-                  placeholder="Chave gratuita Scrapingdog"
-                  className="w-full theme-surface border rounded-lg px-3 py-2 text-xs"
-                />
-              </div>
-              <div>
-                <label className="font-bold block mb-1">Apify API Token (opcional)</label>
-                <input
-                  type="password"
-                  value={apifyToken}
-                  onChange={(e) => setApifyToken(e.target.value)}
-                  placeholder="apify_api_..."
-                  className="w-full theme-surface border rounded-lg px-3 py-2 text-xs"
-                />
-              </div>
-              <div>
-                <label className="font-bold block mb-1">RapidAPI Key (opcional)</label>
-                <input
-                  type="password"
-                  value={rapidapiKey}
-                  onChange={(e) => setRapidapiKey(e.target.value)}
-                  placeholder="Fresh LinkedIn Profile Data"
-                  className="w-full theme-surface border rounded-lg px-3 py-2 text-xs"
-                />
-              </div>
-            </div>
-          )}
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={coletando}
+              className="w-full sm:w-auto theme-btn-primary px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2 h-[42px]"
+            >
+              {coletando ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span>Analisando...</span>
+                </>
+              ) : (
+                <>
+                  <Icon name="chartBar" className="w-4 h-4" />
+                  <span>{analise ? 'Reanalisar Perfil' : 'Analisar Perfil LinkedIn'}</span>
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </section>
 

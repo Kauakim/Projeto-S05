@@ -1,134 +1,230 @@
-from sqlalchemy import select
+import json
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from auth import hash_password
-from models import Aula, Evento, Noticia, Usuario, Vaga
+from models import Aula, Evento, Noticia, Usuario
+
+
+AVALIACOES_PADRAO_POR_CODIGO: dict[str, tuple[str, list[dict]]] = {
+    "C206": (
+        "A",
+        [
+            {"id": "c206-np1", "titulo": "NP1", "tipo": "Prova", "data": "16/09", "realizada": True, "nota": 8.6, "peso": 1.0},
+            {"id": "c206-lab", "titulo": "Exercícios Lab POO", "tipo": "Laboratório", "data": "14/10", "realizada": True, "nota": 9.0, "peso": 1.0},
+            {"id": "c206-np2", "titulo": "NP2", "tipo": "Prova", "data": "24/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "S202": (
+        "L3",
+        [
+            {"id": "s202-np1", "titulo": "NP1", "tipo": "Prova", "data": "22/09", "realizada": True, "nota": 9.0, "peso": 1.0},
+            {"id": "s202-proj", "titulo": "Projeto Modelagem NoSQL/SQL", "tipo": "Projeto", "data": "20/10", "realizada": True, "nota": 9.4, "peso": 1.0},
+            {"id": "s202-np2", "titulo": "NP2", "tipo": "Prova", "data": "10/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "S05": (
+        "A",
+        [
+            {"id": "s05-np1", "titulo": "NP1 — Heurísticas & UX", "tipo": "Prova", "data": "17/09", "realizada": True, "nota": 8.8, "peso": 1.0},
+            {"id": "s05-prot", "titulo": "Protótipo Portal Inatel", "tipo": "Projeto", "data": "21/10", "realizada": True, "nota": 9.2, "peso": 1.0},
+            {"id": "s05-np2", "titulo": "NP2 & Entrega Final", "tipo": "Prova", "data": "12/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "E01": (
+        "B",
+        [
+            {"id": "e01-np1", "titulo": "NP1", "tipo": "Prova", "data": "19/09", "realizada": True, "nota": 5.0, "peso": 1.0},
+            {"id": "e01-lab", "titulo": "Relatórios Lab Circuitos", "tipo": "Laboratório", "data": "17/10", "realizada": True, "nota": 5.8, "peso": 1.0},
+            {"id": "e01-np2", "titulo": "NP2", "tipo": "Prova", "data": "05/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "M02": (
+        "A",
+        [
+            {"id": "m02-np1", "titulo": "NP1", "tipo": "Prova", "data": "18/09", "realizada": True, "nota": 7.2, "peso": 1.0},
+            {"id": "m02-np2", "titulo": "NP2", "tipo": "Prova", "data": "07/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "S204": (
+        "P1",
+        [
+            {"id": "s204-sp1", "titulo": "Sprint 1 — Discovery & Backlog", "tipo": "Projeto", "data": "25/09", "realizada": True, "nota": 9.5, "peso": 1.0},
+            {"id": "s204-sp2", "titulo": "Sprint 2 — MVP & Testes", "tipo": "Projeto", "data": "28/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+    "C115": (
+        "L1",
+        [
+            {"id": "c115-np1", "titulo": "NP1", "tipo": "Prova", "data": "26/09", "realizada": True, "nota": 8.1, "peso": 1.0},
+            {"id": "c115-np2", "titulo": "NP2 & Prática Packet Tracer", "tipo": "Prova", "data": "21/11", "realizada": False, "nota": None, "peso": 1.0},
+        ],
+    ),
+}
 
 
 async def seed_initial_data(session: AsyncSession) -> None:
     """Popula dados iniciais realistas do ecossistema Inatel se o banco estiver vazio."""
 
     # 1. Usuário padrão (Kauã — senha inicial: 123456)
-    res_user = await session.execute(select(Usuario).limit(1))
+    res_user = await session.execute(select(Usuario).order_by(Usuario.id.asc()).limit(1))
     existing_user = res_user.scalar_one_or_none()
     if existing_user is None:
-        session.add(
-            Usuario(
-                nome="Kauã",
-                matricula="GES-2048",
-                curso="Engenharia de Software",
-                periodo=6,
-                email="kaua@ges.inatel.br",
-                senha_hash=hash_password("123456"),
-                telefone="(35) 99912-3456",
-                bio=(
-                    "Estudante de Engenharia de Software no Inatel, apaixonado por "
-                    "interfaces modernas (IHM), desenvolvimento Full-Stack com React e Python "
-                    "e projetos de inovação no Vale da Eletrônica."
-                ),
-                github="https://github.com/kaua",
-                linkedin="https://linkedin.com/in/kaua",
-                areas_interesse="Full-Stack, UI/UX (IHM), Cloud, Inteligência Artificial",
-                ira=86.4,
-                horas_complementares=112,
-                meta_horas=160,
-                disponivel_estagio=True,
-                atualizado_em="31/10/2026",
-            )
+        existing_user = Usuario(
+            nome="Kauã",
+            matricula=2048,
+            curso="Engenharia de Software",
+            periodo=6,
+            email="kaua@ges.inatel.br",
+            senha_hash=hash_password("123456"),
+            telefone="(35) 99912-3456",
+            bio=(
+                "Estudante de Engenharia de Software no Inatel, apaixonado por "
+                "interfaces modernas (IHM), desenvolvimento Full-Stack com React e Python "
+                "e projetos de inovação no Vale da Eletrônica."
+            ),
+            github="https://github.com/kaua",
+            linkedin="https://linkedin.com/in/kaua",
+            areas_interesse="Full-Stack, UI/UX (IHM), Cloud, Inteligência Artificial",
+            crs=86.4,
+            horas_complementares=112,
+            meta_horas=160,
+            horas_ac=112,
+            meta_ac=160,
+            horas_cp=28,
+            meta_cp=40,
+            horas_trilha=80,
+            meta_trilha=120,
+            disponivel_estagio=True,
+            atualizado_em="31/10/2026",
         )
+        session.add(existing_user)
+        await session.flush()
     elif not existing_user.senha_hash:
         existing_user.senha_hash = hash_password("123456")
 
     # 2. Grade de Aulas da Semana (preservando S05, E01 e M02 originais e completando Seg-Sex)
-    res_aulas = await session.execute(select(Aula).limit(1))
-    if res_aulas.scalar_one_or_none() is None:
-        session.add_all(
-            [
-                Aula(
-                    codigo="C206",
-                    disciplina="Programação Orientada a Objetos",
-                    professor="Prof. Chris Lima",
-                    dia="seg",
-                    horario="08:00 - 09:40",
-                    local="P1-S12",
-                    prova_alert=False,
-                    prova_data="24/11",
-                    frequencia="02/25",
-                    nota=8.8,
-                ),
-                Aula(
-                    codigo="S202",
-                    disciplina="Banco de Dados II",
-                    professor="Prof. Marcelo Cysneiros",
-                    dia="seg",
-                    horario="10:00 - 11:40",
-                    local="Lab Soft 03",
-                    prova_alert=True,
-                    prova_data="10/11",
-                    frequencia="04/25",
-                    nota=9.2,
-                ),
-                Aula(
-                    codigo="S05",
-                    disciplina="Interface Homem-Máquina",
-                    professor="Prof. Raphael Cardoso",
-                    dia="ter",
-                    horario="10:00 - 11:40",
-                    local="P1-S17",
-                    prova_alert=False,
-                    prova_data="12/11",
-                    frequencia="03/25",
-                    nota=9.0,
-                ),
-                Aula(
-                    codigo="E01",
-                    disciplina="Circuitos Elétricos em Corrente Contínua",
-                    professor="Prof. Guilherme Aquino",
-                    dia="ter",
-                    horario="13:30 - 15:10",
-                    local="P1-S17",
-                    prova_alert=True,
-                    prova_data="05/11",
-                    frequencia="10/25",
-                    nota=5.4,
-                ),
-                Aula(
-                    codigo="M02",
-                    disciplina="Álgebra e Geometria Analítica",
-                    professor="Profa. Tamara Campos",
-                    dia="qua",
-                    horario="10:00 - 11:40",
-                    local="P1-S19",
-                    prova_alert=True,
-                    prova_data="07/11",
-                    frequencia="06/25",
-                    nota=7.2,
-                ),
-                Aula(
-                    codigo="S204",
-                    disciplina="Engenharia de Produto de Software",
-                    professor="Prof. Renzo Mesquita",
-                    dia="qui",
-                    horario="15:30 - 17:10",
-                    local="Lab Ideia / P3",
-                    prova_alert=False,
-                    prova_data="28/11",
-                    frequencia="01/25",
-                    nota=9.5,
-                ),
-                Aula(
-                    codigo="C115",
-                    disciplina="Redes de Computadores e IoT",
-                    professor="Prof. Antônio Marcos Alberti",
-                    dia="sex",
-                    horario="08:00 - 09:40",
-                    local="Lab CS&I",
-                    prova_alert=False,
-                    prova_data="21/11",
-                    frequencia="02/25",
-                    nota=8.1,
-                ),
-            ]
-        )
+    res_aulas = await session.execute(select(Aula))
+    todas_aulas = list(res_aulas.scalars().all())
+    if not todas_aulas:
+        aulas_seed = [
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="C206",
+                turma="A",
+                disciplina="Programação Orientada a Objetos",
+                professor="Prof. Chris Lima",
+                dia="seg",
+                horario="08:00 - 09:40",
+                local="P1-S12",
+                prova_alert=False,
+                prova_data="24/11",
+                frequencia="02/25",
+                nota=8.8,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["C206"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="S202",
+                turma="L3",
+                disciplina="Banco de Dados II",
+                professor="Prof. Marcelo Cysneiros",
+                dia="seg",
+                horario="10:00 - 11:40",
+                local="Lab Soft 03",
+                prova_alert=True,
+                prova_data="10/11",
+                frequencia="04/25",
+                nota=9.2,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["S202"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="S05",
+                turma="A",
+                disciplina="Interface Homem-Máquina",
+                professor="Prof. Raphael Cardoso",
+                dia="ter",
+                horario="10:00 - 11:40",
+                local="P1-S17",
+                prova_alert=False,
+                prova_data="12/11",
+                frequencia="03/25",
+                nota=9.0,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["S05"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="E01",
+                turma="B",
+                disciplina="Circuitos Elétricos em Corrente Contínua",
+                professor="Prof. Guilherme Aquino",
+                dia="ter",
+                horario="13:30 - 15:10",
+                local="P1-S17",
+                prova_alert=True,
+                prova_data="05/11",
+                frequencia="10/25",
+                nota=5.4,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["E01"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="M02",
+                turma="A",
+                disciplina="Álgebra e Geometria Analítica",
+                professor="Profa. Tamara Campos",
+                dia="qua",
+                horario="10:00 - 11:40",
+                local="P1-S19",
+                prova_alert=True,
+                prova_data="07/11",
+                frequencia="06/25",
+                nota=7.2,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["M02"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="S204",
+                turma="P1",
+                disciplina="Engenharia de Produto de Software",
+                professor="Prof. Renzo Mesquita",
+                dia="qui",
+                horario="15:30 - 17:10",
+                local="Lab Ideia / P3",
+                prova_alert=False,
+                prova_data="28/11",
+                frequencia="01/25",
+                nota=9.5,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["S204"][1], ensure_ascii=False),
+            ),
+            Aula(
+                usuario_id=existing_user.id,
+                codigo="C115",
+                turma="L1",
+                disciplina="Redes de Computadores e IoT",
+                professor="Prof. Antônio Marcos Alberti",
+                dia="sex",
+                horario="08:00 - 09:40",
+                local="Lab CS&I",
+                prova_alert=False,
+                prova_data="21/11",
+                frequencia="02/25",
+                nota=8.1,
+                avaliacoes_json=json.dumps(AVALIACOES_PADRAO_POR_CODIGO["C115"][1], ensure_ascii=False),
+            ),
+        ]
+        session.add_all(aulas_seed)
+    else:
+        for aula in todas_aulas:
+            if aula.usuario_id is None:
+                aula.usuario_id = existing_user.id
+            padrao = AVALIACOES_PADRAO_POR_CODIGO.get((aula.codigo or "").upper())
+            if padrao:
+                if not aula.turma or aula.turma == "A":
+                    aula.turma = padrao[0]
+                if not aula.avaliacoes_json or aula.avaliacoes_json.strip() in ("", "[]"):
+                    avaliacoes_json = json.dumps(padrao[1], ensure_ascii=False)
+                    aula.avaliacoes_json = avaliacoes_json
 
     # 3. Eventos do Carrossel (preservando e aprimorando os 4 eventos originais)
     res_eventos = await session.execute(select(Evento).limit(1))
@@ -160,7 +256,7 @@ async def seed_initial_data(session: AsyncSession) -> None:
                     imagem_url="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=1000&h=450",
                 ),
                 Evento(
-                    titulo="Feira de Oportunidades NESP (FINATEL)",
+                    titulo="Feira de Oportunidades e Carreiras (FINATEL)",
                     data="25/11",
                     horario="09:00",
                     local="Ginásio Poliesportivo do Inatel",
@@ -186,116 +282,34 @@ async def seed_initial_data(session: AsyncSession) -> None:
             ]
         )
 
-    # 4. Vagas de Estágio / IC / Emprego (NESP Inatel)
-    res_vagas = await session.execute(select(Vaga).limit(1))
-    if res_vagas.scalar_one_or_none() is None:
-        session.add_all(
-            [
-                Vaga(
-                    titulo="Estágio em Desenvolvimento Full-Stack (React + Python)",
-                    empresa="ICC - Inatel Competence Center",
-                    tipo="Estágio",
-                    modalidade="Híbrido",
-                    localizacao="Santa Rita do Sapucaí - MG",
-                    bolsa_ou_salario="R$ 1.850,00 + Benefícios",
-                    area="Desenvolvimento Web",
-                    requisitos="React, Tailwind CSS, Python (FastAPI), SQL/PostgreSQL e Git",
-                    descricao=(
-                        "Atue em projetos reais de PD&I dentro do Inatel Competence Center, "
-                        "desenvolvendo dashboards analíticos e APIs REST de alta performance "
-                        "em conjunto com engenheiros seniores."
-                    ),
-                    prazo="15/11/2026",
-                    contato_email="talentos.icc@inatel.br",
-                    criado_em="28/10/2026",
-                ),
-                Vaga(
-                    titulo="Bolsista de Iniciação Científica — Redes 6G & IA",
-                    empresa="Centro xGMobile / Inatel",
-                    tipo="Iniciação Científica",
-                    modalidade="Presencial",
-                    localizacao="Campus Inatel (Lab xGMobile)",
-                    bolsa_ou_salario="R$ 1.200,00 (Bolsa FAPEMIG/EMBRAPII)",
-                    area="Pesquisa & Telecom",
-                    requisitos="Python, Algoritmos de ML, Redes de Computadores, Inglês técnico",
-                    descricao=(
-                        "Pesquisa aplicada em otimização de redes móveis de 6ª geração utilizando "
-                        "aprendizado de máquina para alocação dinâmica de espectro."
-                    ),
-                    prazo="20/11/2026",
-                    contato_email="xgmobile@inatel.br",
-                    criado_em="26/10/2026",
-                ),
-                Vaga(
-                    titulo="Desenvolvedor(a) Front-End Júnior (UI/UX & Design System)",
-                    empresa="Leucotron Tecnologia",
-                    tipo="Júnior",
-                    modalidade="Híbrido",
-                    localizacao="Santa Rita do Sapucaí - MG",
-                    bolsa_ou_salario="R$ 4.200,00 CLT",
-                    area="Front-End & IHM",
-                    requisitos="React, TypeScript/JavaScript, Figma, Acessibilidade e Usabilidade",
-                    descricao=(
-                        "Buscamos talentos apaixonados por Interface Homem-Máquina para evoluir "
-                        "nossa plataforma de comunicação unificada e atendimento omnichannel."
-                    ),
-                    prazo="30/11/2026",
-                    contato_email="rh@leucotron.com.br",
-                    criado_em="25/10/2026",
-                ),
-                Vaga(
-                    titulo="Programa de Estágio Global em Cloud & DevOps",
-                    empresa="Ericsson (Parceria Inatel)",
-                    tipo="Estágio",
-                    modalidade="Remoto",
-                    localizacao="Remoto / São José dos Campos - SP",
-                    bolsa_ou_salario="R$ 2.300,00 + Auxílio Home Office",
-                    area="Cloud & Infraestrutura",
-                    requisitos="Linux, Docker, Python ou Go, Noções de redes e CI/CD",
-                    descricao=(
-                        "Oportunidade exclusiva do convênio NESP/Ericsson para estudantes a partir "
-                        "do 5º período interessados em automação em nuvem e microsserviços."
-                    ),
-                    prazo="18/11/2026",
-                    contato_email="nesp@inatel.br",
-                    criado_em="22/10/2026",
-                ),
-                Vaga(
-                    titulo="Trainee em Engenharia de Sistemas Embarcados & IoT",
-                    empresa="Furukawa Electric LatAm",
-                    tipo="Trainee",
-                    modalidade="Presencial",
-                    localizacao="Santa Rita do Sapucaí / Curitiba",
-                    bolsa_ou_salario="R$ 6.800,00 CLT",
-                    area="Sistemas Embarcados",
-                    requisitos="C/C++, Microcontroladores, Protocolos MQTT/LoRaWAN, Formandos 2026/2027",
-                    descricao=(
-                        "Programa acelerado de carreira focado em soluções ópticas inteligentes e "
-                        "monitoramento IoT industrial."
-                    ),
-                    prazo="05/12/2026",
-                    contato_email="carreiras@furukawaelectric.com",
-                    criado_em="20/10/2026",
-                ),
-            ]
+    # 4. Notícias Reais exclusivas do Portal Inatel (remove eventuais matérias de outras fontes)
+    await session.execute(
+        delete(Noticia).where(
+            or_(
+                Noticia.url_original.is_(None),
+                Noticia.url_original == "",
+                ~func.lower(Noticia.url_original).like("%inatel.br%"),
+            )
         )
-
-    # 5. Notícias Reais do Portal Inatel e de Santa Rita do Sapucaí / Região (zero dados mockados)
-    res_reais = await session.execute(
-        select(Noticia).where(Noticia.url_original.is_not(None), Noticia.url_original != "").limit(1)
     )
-    tem_noticia_real = res_reais.scalar_one_or_none() is not None
+
+    res_reais = await session.execute(
+        select(func.count(Noticia.id)).where(
+            func.lower(Noticia.url_original).like("%inatel.br%")
+        )
+    )
+    total_noticias_inatel = int(res_reais.scalar_one() or 0)
 
     await session.commit()
 
-    if not tem_noticia_real:
+    if total_noticias_inatel < 4:
         try:
             from news_service import sincronizar_noticias_no_banco
 
             inseridas, atualizadas = await sincronizar_noticias_no_banco(session)
             print(
-                f"[Notícias] Sincronização inicial concluída: {inseridas} reais inseridas, {atualizadas} atualizadas."
+                f"[Notícias Inatel] Sincronização inicial concluída: {inseridas} inseridas, {atualizadas} atualizadas."
             )
         except Exception as exc:
-            print(f"[Notícias] Aviso ao sincronizar notícias reais na inicialização: {exc}")
+            print(f"[Notícias Inatel] Aviso ao sincronizar notícias na inicialização: {exc}")
 

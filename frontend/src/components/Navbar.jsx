@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import inatelBranco from '@assets/images/Inatel Branco.png';
-import logoQuadrada from '@assets/images/Logo INATEL.png';
 import Icon from './Icon';
 
 const THEMES = [
-  { id: 'inatel', label: 'Inatel', dot: 'bg-[#126ae2]' },
-  { id: 'limao', label: 'Limão', dot: 'bg-[#9ACD32]' },
-  { id: 'dark', label: 'Dark', dot: 'bg-sky-400' },
+  { id: 'inatel', label: 'Tema Claro', icon: 'sun' },
+  { id: 'dark', label: 'Tema Escuro', icon: 'moon' },
 ];
 
 export default function Navbar({
@@ -14,9 +12,6 @@ export default function Navbar({
   onNavigate,
   theme,
   onChangeTheme,
-  usuario,
-  totalVagas = 0,
-  totalCandidaturas = 0,
   dbStatus,
   onLogout,
 }) {
@@ -29,18 +24,18 @@ export default function Navbar({
       icon: 'home',
     },
     {
-      id: 'vagas-noticias',
-      label: 'Vagas & Notícias',
+      id: 'vagas',
+      label: 'Vagas',
       icon: 'folder',
-      badge: totalVagas > 0 ? totalVagas : null,
     },
     {
-      id: 'perfil',
-      label: 'Minha Conta',
-      icon: 'user',
-      badge: totalCandidaturas > 0 ? totalCandidaturas : null,
+      id: 'noticias',
+      label: 'Notícias',
+      icon: 'file',
     },
   ];
+
+  const apiOn = Boolean(dbStatus);
 
   const handleSelectPage = (pageId) => {
     onNavigate(pageId);
@@ -72,13 +67,10 @@ export default function Navbar({
                 alt="Inatel"
                 className="h-7 sm:h-8 w-auto object-contain transition-transform group-hover:scale-[1.03]"
               />
-              <span className="hidden lg:inline-block text-xs font-medium px-2.5 py-0.5 rounded-full bg-white/15 text-white/90 border border-white/15">
-                Portal S05
-              </span>
             </button>
           </div>
 
-          {/* Centro: Navegação Desktop */}
+          {/* Centro: Navegação Desktop (Painel Acadêmico, Vagas, Notícias) */}
           <nav className="hidden md:flex items-center gap-1.5">
             {navItems.map((item) => {
               const isActive = activePage === item.id;
@@ -98,27 +90,18 @@ export default function Navbar({
                     className={`w-4 h-4 ${isActive ? 'text-[#126ae2]' : 'text-white/80'}`}
                   />
                   <span>{item.label}</span>
-                  {item.badge !== null && item.badge !== undefined && (
-                    <span
-                      className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
-                        isActive ? 'bg-[#003057] text-white' : 'bg-white/20 text-white'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}
           </nav>
 
-          {/* Direita: Seletor de Temas + Status API + Perfil + Sair */}
+          {/* Direita: Tema Claro/Escuro (Sol/Lua) + API: ON/OFF + Minha Conta (SVG Pessoa) + Sair */}
           <div className="flex items-center gap-2">
-            {/* Seletor de Temas */}
+            {/* Alternador Tema Claro / Escuro (Sol e Lua) */}
             <div
-              className="hidden sm:flex items-center bg-black/25 p-1 rounded-xl border border-white/10"
+              className="h-9 p-1 rounded-xl flex items-center gap-1 bg-white/10 border border-white/15 box-border"
               role="group"
-              aria-label="Selecionar tema visual"
+              aria-label="Selecionar tema claro ou escuro"
             >
               {THEMES.map((t) => {
                 const selected = theme === t.id;
@@ -127,61 +110,52 @@ export default function Navbar({
                     key={t.id}
                     type="button"
                     onClick={() => onChangeTheme(t.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    title={t.label}
+                    aria-label={t.label}
+                    className={`h-7 w-7 rounded-lg transition cursor-pointer flex items-center justify-center shrink-0 ${
                       selected
-                        ? 'bg-white text-slate-900 shadow-xs'
+                        ? t.id === 'inatel'
+                          ? 'bg-white text-amber-500 shadow-xs'
+                          : 'bg-white text-slate-900 shadow-xs'
                         : 'text-white/75 hover:text-white'
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                    <span>{t.label}</span>
+                    <Icon name={t.icon} className="w-4 h-4" />
                   </button>
                 );
               })}
             </div>
 
-            {/* Indicador de conexão com FastAPI */}
+            {/* Status da API (API: ON ou API: OFF) */}
             <div
               title={
-                dbStatus
-                  ? `API conectada (${dbStatus.mode === 'postgresql' ? 'PostgreSQL ativo' : 'SQLite local de fallback'})`
-                  : 'Verificando conexão com FastAPI...'
+                apiOn
+                  ? `API conectada (${dbStatus?.mode === 'postgresql' ? 'PostgreSQL ativo' : 'Banco local ativo'})`
+                  : 'API desconectada'
               }
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-[11px] text-white/90"
+              className="hidden sm:inline-flex h-9 items-center gap-2 px-3 rounded-xl bg-white/10 border border-white/15 text-xs font-bold text-white/95 whitespace-nowrap box-border"
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  dbStatus ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                  apiOn ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
                 }`}
               />
-              <span>{dbStatus?.mode === 'postgresql' ? 'PostgreSQL' : dbStatus ? 'API Online' : 'Offline'}</span>
+              <span>{apiOn ? 'API: ON' : 'API: OFF'}</span>
             </div>
 
-            {/* Botão do Usuário */}
+            {/* Botão simples de Minha Conta (SVG pessoa comum) */}
             <button
               type="button"
               onClick={() => handleSelectPage('perfil')}
-              className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border transition cursor-pointer ${
+              title="Minha Conta"
+              aria-label="Minha Conta"
+              className={`h-9 w-9 rounded-xl border transition cursor-pointer flex items-center justify-center shrink-0 box-border ${
                 activePage === 'perfil'
                   ? 'bg-white text-[#003057] border-white shadow-sm'
                   : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
               }`}
             >
-              <img
-                src={logoQuadrada}
-                alt="Avatar Inatel"
-                className="w-7 h-7 rounded-lg object-cover border border-white/30"
-              />
-              <div className="hidden sm:flex flex-col items-start leading-tight max-w-[110px]">
-                <span className="text-xs font-bold truncate w-full">{usuario?.nome || 'Aluno'}</span>
-                <span
-                  className={`text-[10px] truncate w-full ${
-                    activePage === 'perfil' ? 'text-slate-600' : 'text-white/75'
-                  }`}
-                >
-                  {usuario?.matricula || 'GES'}
-                </span>
-              </div>
+              <Icon name="person" className="w-4 h-4" />
             </button>
 
             {/* Botão Sair */}
@@ -189,7 +163,7 @@ export default function Navbar({
               type="button"
               onClick={onLogout}
               title="Encerrar sessão"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-red-500/20 hover:bg-red-500/35 text-white border border-red-400/30 transition cursor-pointer"
+              className="hidden sm:inline-flex h-9 items-center justify-center px-3.5 rounded-xl text-xs font-bold bg-red-500/20 hover:bg-red-500/35 text-white border border-red-400/30 transition cursor-pointer box-border shrink-0"
             >
               <span>Sair</span>
             </button>
@@ -219,46 +193,45 @@ export default function Navbar({
                     />
                     {item.label}
                   </span>
-                  {item.badge && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#126ae2] text-white">
-                      {item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}
+
+            <button
+              type="button"
+              onClick={() => handleSelectPage('perfil')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
+                activePage === 'perfil' ? 'bg-white text-[#003057]' : 'text-white hover:bg-white/10'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <Icon
+                  name="person"
+                  className={`w-4 h-4 ${activePage === 'perfil' ? 'text-[#126ae2]' : 'text-white/80'}`}
+                />
+                Minha Conta
+              </span>
+            </button>
           </div>
 
-          <div className="pt-2 border-t border-white/15">
-            <p className="text-[11px] uppercase tracking-wider text-white/70 mb-2 font-semibold">
-              Tema Visual
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onChangeTheme(t.id)}
-                  className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border cursor-pointer ${
-                    theme === t.id
-                      ? 'bg-white text-slate-900 border-white'
-                      : 'bg-white/10 text-white border-white/15'
-                  }`}
-                >
-                  <span className={`w-2.5 h-2.5 rounded-full ${t.dot}`} />
-                  {t.label}
-                </button>
-              ))}
+          <div className="flex items-center justify-between pt-2 border-t border-white/15">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/10 border border-white/10 text-xs font-bold text-white">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  apiOn ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                }`}
+              />
+              <span>{apiOn ? 'API: ON' : 'API: OFF'}</span>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={onLogout}
-            className="w-full py-2.5 rounded-xl text-xs font-bold bg-red-500/25 text-white border border-red-400/30 cursor-pointer"
-          >
-            Sair da Conta
-          </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500/25 text-white border border-red-400/30 cursor-pointer"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       )}
     </header>

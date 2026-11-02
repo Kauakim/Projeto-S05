@@ -32,18 +32,18 @@ npm run db:up
 ## Páginas e Funcionalidades
 
 0. **Autenticação & Cadastro (`LoginPage`)**:
-   - Login por **e-mail institucional** ou **matrícula** (conta padrão pré-cadastrada: `kaua@ges.inatel.br` ou `GES-2048` / senha inicial: `123456`).
+   - Login por **e-mail institucional** ou **matrícula inteira (`0` a `999999`)** (conta padrão pré-cadastrada: `kaua@ges.inatel.br` ou matrícula `2048` / senha inicial: `123456`).
    - Aba **Criar Conta** para registrar novos alunos com hash criptográfico (`PBKDF2-HMAC-SHA256`) e sessão via token **JWT**.
 1. **Painel Acadêmico (`#dashboard`)**:
-   - Saudação personalizada sincronizada com o banco, indicadores rápidos (IRA, Horas Complementares e Mural NESP) e Central de Avisos interativa.
-   - Grade semanal **Minhas Aulas** com filtro por dia da semana, código de cores por nota, controle de faltas e alertas de prova.
-   - **Carrossel de Eventos** do campus com confirmação de presença e seletor dos 3 temas visuais (**Inatel**, **Limão** e **Dark**).
-2. **Central de Vagas & Notícias (`#vagas-noticias`)**:
-   - **Mural NESP Carreiras:** busca por tecnologia/empresa, filtros por tipo (`Estágio`, `Iniciação Científica`, `Júnior`, `Trainee`) e modalidade (`Presencial`, `Híbrido`, `Remoto`), vagas favoritas, candidatura integrada ao perfil do aluno e publicação de novas vagas.
+   - Saudação personalizada sincronizada com o banco, indicadores clicáveis de **CRS** (*Coeficiente de Rendimento*, nota do semestre) e **Horas Validadas (AC, CP e Trilha)** com edição rápida, além da Central de Avisos interativa.
+   - **Gestão Completa de Aulas, Turmas, Provas & Notas (`GET/POST/PUT/DELETE /api/aulas`)**: cadastro de novas disciplinas e turmas, registro de provas/trabalhos já realizados (com nota obtida e cálculo automático de média) e próximas avaliações, controle de faltas e alertas de prova.
+   - **Carrossel de Eventos** do campus com confirmação de presença, alternador de tema claro/escuro (**Sol** e **Lua**), indicador **API: ON / API: OFF** e rodapé institucional fiel ao portal oficial do Inatel (`inatel.br/home`).
+2. **Vagas (`#vagas`)**:
    - **Vagas LinkedIn (Sua Área):** coleta vagas reais em tempo real no LinkedIn via `python-jobspy` (`POST /api/linkedin/vagas/buscar`) a partir das áreas de interesse e skills do perfil do aluno, calcula o `% Match`, salva no banco (`vagas_linkedin_cache`) e permite exportar em JSON.
-   - **Notícias Reais (Inatel & Região):** web scraping assíncrono em tempo real (`POST /api/noticias/sincronizar`) direto do **Portal Inatel** (`inatel.br/noticias`), **g1 Sul de Minas (Santa Rita do Sapucaí)** e imprensa regional, gerando automaticamente um **Resumão em Tópicos** para cada reportagem e disponibilizando o link oficial para abrir a matéria completa na fonte original (sem dados mockados).
-3. **Área do Aluno / Perfil (`#perfil`)**:
+3. **Notícias (`#noticias`)**:
+   - **Notícias Reais do Inatel:** web scraping assíncrono em tempo real (`POST /api/noticias/sincronizar`) direto do **Portal Inatel** (`inatel.br/noticias`), gerando automaticamente um **Resumo em Tópicos** para cada reportagem oficial e disponibilizando o link direto para abrir a matéria completa em `inatel.br`.
+4. **Minha Conta (`#perfil`)**:
    - **Carteirinha Estudantil Digital Inatel** com modo de privacidade e exportação de comprovante de vínculo acadêmico.
-   - **Análise LinkedIn via Web Scraping (`POST /api/linkedin/analisar-perfil`):** campo para colar o link público do perfil LinkedIn (`https://www.linkedin.com/in/...`), coletando nome, headline, resumo, experiências, formação e skills via API gratuita **Jina Reader (`r.jina.ai`)** sem necessidade de chave (com suporte opcional a `APIFY_API_TOKEN` ou `RAPIDAPI_KEY` via `.env` ou interface), calculando pontuação `0–100`, pontos fortes, recomendações e persistindo tudo na tabela `analises_linkedin` + exportação em JSON.
-   - Métricas de desempenho (IRA, média semestral e barra de progresso de Horas Complementares).
-   - Edição completa do perfil acadêmico e senha (`PUT /api/usuario`, `PUT /api/auth/senha`), além do acompanhamento de **Minhas Candidaturas** e **Vagas Salvas**.
+   - **Controle Manual de Horas Curriculares (`AC`, `CP` e `Trilha`) & CRS (`PUT /api/usuario`)**: visualização das metas definidas e ajuste manual direto das horas já cumpridas de Atividades Complementares (AC), Competências Pessoais (CP), Trilhas de Especialização e CRS do semestre.
+   - **Análise LinkedIn via Web Scraping (`POST /api/linkedin/analisar-perfil`):** campo direto para colar o link público do perfil LinkedIn (`https://www.linkedin.com/in/...`), extraindo dados, seções e skills, calculando pontuação `0–100`, pontos fortes e recomendações, e persistindo tudo na tabela `analises_linkedin`.
+   - Edição completa de dados cadastrais (incluindo matrícula inteira `0` a `999999`) e senha (`PUT /api/usuario`, `PUT /api/usuario/senha`).

@@ -62,21 +62,6 @@ INATEL_IGNORED_SLUGS = {
     "tags",
 }
 
-# Filtra ocorrências policiais gráficas e homônimo português ("Fundação INATEL" de Portugal)
-TERMOS_BLOQUEADOS = (
-    "baleado",
-    "corpo em estado",
-    "decomposição",
-    "homicídio",
-    "assassinato",
-    "latrocínio",
-    "estupro",
-    "tráfico de drogas",
-    "fundação inatel",
-    "chamusca",
-    "malaqueijo",
-)
-
 FRASES_RUIDO_PARAGRAFO = (
     "utilizamos cookies",
     "gerenciador de cookies",
@@ -84,14 +69,9 @@ FRASES_RUIDO_PARAGRAFO = (
     "cookies estritamente necessários",
     "todos os direitos reservados",
     "copyright ©",
-    "veja mais notícias da região",
-    "siga o g1 sul de minas",
-    "vídeos: veja tudo sobre o sul de minas",
-    "participe do canal do g1",
     "baixe o app",
     "leia também",
     "veja também",
-    "veja apuração",
     "assine nossa newsletter",
     "política de privacidade",
     "— foto:",
@@ -120,9 +100,8 @@ def _truncar_limpo(texto: str, limite: int) -> str:
 
 def _limpar_titulo_portal(titulo: str) -> str:
     t = _limpar_espacos(titulo)
-    # Remove sufixos comuns de portais (" | G1", " | Notícias - Inatel", " - MundoGEO")
     t = re.sub(
-        r"\s*(?:\||—|–|-)\s*(?:G1(?:\s+Sul\s+de\s+Minas)?|Notícias\s*-\s*Inatel|Inatel|g1|O\s+Globo|Terra\s+do\s+Mandu|MundoGEO|Diário\s+da\s+Mídia|Imprensa\s*24h).*$",
+        r"\s*(?:\||—|–|-)\s*(?:Notícias\s*-\s*Inatel|Portal\s+Inatel|Inatel).*$",
         "",
         t,
         flags=re.IGNORECASE,
@@ -173,12 +152,10 @@ def _tentar_parse_data(texto_data: str) -> tuple[str, tuple[int, int, int]] | No
 
 
 def _extrair_data_pt(texto_data: str, url: str = "") -> tuple[str, tuple[int, int, int]]:
-    """Retorna (dd/mm/yyyy, (yyyy, mm, dd)) a partir de metadados, texto em PT-BR, RFC2822 ou URL."""
     parsed = _tentar_parse_data(texto_data)
     if parsed:
         return parsed
 
-    # Tenta extrair /YYYY/MM/DD/ da própria URL (ex: g1.globo.com / terradomandu)
     m_url = re.search(r"/(20\d{2})/(\d{2})/(\d{2})(?:/|-|$)", url or "")
     if m_url:
         y, mo, d = int(m_url.group(1)), int(m_url.group(2)), int(m_url.group(3))
@@ -189,15 +166,13 @@ def _extrair_data_pt(texto_data: str, url: str = "") -> tuple[str, tuple[int, in
     return hoje.strftime("%d/%m/%Y"), (hoje.year, hoje.month, hoje.day)
 
 
-def _classificar_categoria(titulo: str, subtitulo: str, eh_inatel: bool) -> str:
+def _classificar_categoria(titulo: str, subtitulo: str) -> str:
     alvo = f"{titulo} {subtitulo}".lower()
     if any(
         k in alvo
-        for k in ("vaga", "vagas", "emprego", "estágio", "estagio", "concurso", "carreira", "contrata", "sine")
+        for k in ("vaga", "vagas", "emprego", "estágio", "estagio", "concurso", "carreira", "contrata")
     ):
         return "Carreira"
-    if not eh_inatel:
-        return "Região"
     if any(
         k in alvo
         for k in ("6g", "5g", "pesquisa", "cientista", "xgmobile", "mestrado", "doutorado", "lidar", "laboratório")
@@ -210,26 +185,10 @@ def _classificar_categoria(titulo: str, subtitulo: str, eh_inatel: bool) -> str:
         return "Acadêmico"
     if any(
         k in alvo
-        for k in ("inovação", "inovacao", "negócios", "startup", "empreendedor", "inteligência artificial", "tecnologia")
-    ):
-        return "Inovação"
-    if any(
-        k in alvo
         for k in ("summit", "workshop", "semana", "feira", "fetin", "competição", "finais", "evento", "conquista", "pódio")
     ):
         return "Eventos"
     return "Inovação"
-
-
-def _eh_conteudo_adequado(titulo: str, descricao: str, url: str) -> bool:
-    url_low = (url or "").lower()
-    if "/pt-pt/" in url_low or ".pt/" in url_low:
-        return False
-    combinado = f"{titulo} {descricao}".lower()
-    for termo in TERMOS_BLOQUEADOS:
-        if termo in combinado:
-            return False
-    return True
 
 
 def _paragrafo_valido(p: str) -> bool:
@@ -242,14 +201,7 @@ def _paragrafo_valido(p: str) -> bool:
     return True
 
 
-def _construir_resumao(titulo: str, subtitulo: str, paragrafos: list[str], fonte_nome: str) -> tuple[str, str, str]:
-    """
-    Gera a partir do conteúdo real raspado da notícia:
-    - resumo_card (até 340 chars): síntese direta para exibição nos cards
-    - conteudo_resumao: Resumão estruturado em tópicos + síntese dos parágrafos principais
-    - tempo_leitura: estimativa real baseada nas palavras da matéria original
-    """
-    # Deduplica parágrafos mantendo a ordem original
+def _construir_resumo(titulo: str, subtitulo: str, paragrafos: list[str], fonte_nome: str) -> tuple[str, str, str]:
     vistos: set[str] = set()
     limpos: list[str] = []
     for p in paragrafos:
@@ -263,7 +215,6 @@ def _construir_resumao(titulo: str, subtitulo: str, paragrafos: list[str], fonte
     if sub_limpo.lower() == titulo.lower():
         sub_limpo = ""
 
-    # 1. Resumo curto do card
     if sub_limpo and len(sub_limpo) >= 45:
         resumo_base = sub_limpo
         if len(resumo_base) < 130 and limpos:
@@ -277,7 +228,6 @@ def _construir_resumao(titulo: str, subtitulo: str, paragrafos: list[str], fonte
 
     resumo_card = _truncar_limpo(resumo_base, 335)
 
-    # 2. Seleção extrativa de sentenças-chave para os tópicos do Resumão
     candidatas: list[tuple[float, int, str]] = []
     palavras_titulo = {
         w
@@ -301,26 +251,21 @@ def _construir_resumao(titulo: str, subtitulo: str, paragrafos: list[str], fonte
                 continue
 
             score = 0.0
-            # Posição inicial na matéria tem alto valor jornalístico (lide)
             score += max(0.0, 4.0 - idx_p * 0.55)
-            # Presença de números, estatísticas, datas ou valores reais
             if re.search(r"\b\d+[\d.,%]*\b", s_clean):
                 score += 2.2
-            # Coerência temática com o título
             palavras_s = set(re.findall(r"[a-zà-ú0-9]{4,}", s_clean.lower()))
             intersecao = len(palavras_titulo & palavras_s)
             score += min(3.0, intersecao * 0.8)
-            # Relevância institucional / regional
             if any(
                 k in s_clean.lower()
-                for k in ("inatel", "santa rita", "sul de minas", "estudantes", "pesquisa", "vagas", "inovação")
+                for k in ("inatel", "estudantes", "pesquisa", "inovação", "tecnologia", "engenharia")
             ):
                 score += 1.2
 
             candidatas.append((score, idx_sent, s_clean))
             idx_sent += 1
 
-    # Escolhe as melhores sentenças sem repetir ideias quase idênticas e reordena pela ordem narrativa
     candidatas.sort(key=lambda x: x[0], reverse=True)
     escolhidas: list[tuple[int, str]] = []
     prefixos_escolhidos: set[str] = set()
@@ -335,51 +280,30 @@ def _construir_resumao(titulo: str, subtitulo: str, paragrafos: list[str], fonte
 
     escolhidas.sort(key=lambda x: x[0])
 
-    # 3. Monta o texto do Resumão Completo
     blocos: list[str] = []
     if escolhidas:
         topicos = "\n".join(f"• {s}" for _, s in escolhidas)
-        blocos.append(f"RESUMÃO EM TÓPICOS:\n{topicos}")
+        blocos.append(f"RESUMO EM TÓPICOS:\n{topicos}")
 
     paragrafos_sintese = limpos[:4] if limpos else ([sub_limpo] if sub_limpo else [])
     if paragrafos_sintese:
         blocos.append("SÍNTESE DA REPORTAGEM:\n" + "\n\n".join(paragrafos_sintese))
 
-    conteudo_resumao = "\n\n".join(blocos).strip()
-    if len(conteudo_resumao) < 40:
-        conteudo_resumao = resumo_card
+    conteudo_resumo = "\n\n".join(blocos).strip()
+    if len(conteudo_resumo) < 40:
+        conteudo_resumo = resumo_card
 
-    # 4. Tempo de leitura estimado da matéria completa
-    total_palavras = sum(len(p.split()) for p in limpos) or len(conteudo_resumao.split())
+    total_palavras = sum(len(p.split()) for p in limpos) or len(conteudo_resumo.split())
     minutos = max(2, min(8, math.ceil(total_palavras / 180)))
     tempo_leitura = f"{minutos} min"
 
-    return resumo_card, conteudo_resumao, tempo_leitura
+    return resumo_card, conteudo_resumo, tempo_leitura
 
 
-def _extrair_nome_portal(url: str, og_site_name: str = "") -> str:
-    host = urlparse(url).netloc.lower().replace("www.", "")
-    if "inatel.br" in host:
-        return "Portal Inatel"
-    if "g1.globo.com" in host:
-        return "g1 Sul de Minas"
-    if "oglobo.globo.com" in host:
-        return "O Globo"
-    if "terradomandu.com.br" in host:
-        return "Terra do Mandu"
-    if "mundogeo.com" in host:
-        return "MundoGEO"
-    if og_site_name and len(og_site_name.strip()) <= 40 and og_site_name.strip().lower() != "notícias":
-        return og_site_name.strip()
-    partes = host.split(".")
-    return partes[0].capitalize() if partes else "Imprensa Regional"
-
-
-async def _raspar_artigo(
+async def _raspar_artigo_inatel(
     client: httpx.AsyncClient,
     sem: asyncio.Semaphore,
     url: str,
-    eh_inatel: bool = False,
     data_fallback: str = "",
     titulo_fallback: str = "",
     resumo_fallback: str = "",
@@ -390,6 +314,10 @@ async def _raspar_artigo(
             if resp.status_code >= 400 or not resp.text:
                 return None
             url_final = str(resp.url)
+            host_final = urlparse(url_final).netloc.lower()
+            if "inatel.br" not in host_final:
+                return None
+
             soup = BeautifulSoup(resp.text, "html.parser")
 
             def _meta(attr_val: str) -> str:
@@ -404,8 +332,6 @@ async def _raspar_artigo(
                 return None
 
             subtitulo = _meta("og:description") or _meta("description") or resumo_fallback
-            if not _eh_conteudo_adequado(titulo, subtitulo, url_final):
-                return None
 
             og_img = _meta("og:image:secure_url") or _meta("og:image") or _meta("twitter:image")
             if og_img and og_img.startswith("/"):
@@ -413,10 +339,8 @@ async def _raspar_artigo(
             if len(og_img) > 580:
                 og_img = ""
 
-            og_site = _meta("og:site_name")
-            fonte_nome = _extrair_nome_portal(url_final, og_site)
+            fonte_nome = "Portal Inatel"
 
-            # Data de publicação
             data_candidata = (
                 _meta("article:published_time")
                 or _meta("publish-date")
@@ -453,11 +377,9 @@ async def _raspar_artigo(
                     data_candidata = m_cabecalho.group(0)
 
             publicado_em, chave_data = _extrair_data_pt(data_candidata, url_final)
-            # Evita notícias antigas perdidas em buscas genéricas
-            if chave_data[0] < 2025:
+            if chave_data[0] < 2024:
                 return None
 
-            # Limpa navegação/rodapé/cookies antes de extrair parágrafos
             for tag_ruido in soup.select(
                 "nav, footer, header, aside, script, style, noscript, form, "
                 "[id*='cookie'], [class*='cookie'], [class*='lgpd'], [class*='newsletter'], [class*='related']"
@@ -469,28 +391,26 @@ async def _raspar_artigo(
             )
             paragrafos = [_limpar_espacos(p.get_text(" ")) for p in soup.select(seletores_p)]
 
-            eh_item_inatel = eh_inatel or ("inatel" in titulo.lower()) or ("inatel.br" in url_final.lower())
-            resumo_card, conteudo_resumao, tempo_leitura = _construir_resumao(
+            resumo_card, conteudo_resumo, tempo_leitura = _construir_resumo(
                 titulo=titulo,
                 subtitulo=subtitulo,
                 paragrafos=paragrafos,
                 fonte_nome=fonte_nome,
             )
-            categoria = _classificar_categoria(titulo, subtitulo, eh_item_inatel)
+            categoria = _classificar_categoria(titulo, subtitulo)
 
             return {
                 "titulo": _truncar_limpo(titulo, 195),
                 "resumo": resumo_card,
-                "conteudo": conteudo_resumao,
+                "conteudo": conteudo_resumo,
                 "categoria": categoria,
-                "autor": _truncar_limpo(fonte_nome, 95),
-                "fonte_nome": _truncar_limpo(fonte_nome, 110),
+                "autor": fonte_nome,
+                "fonte_nome": fonte_nome,
                 "url_original": url_final[:595],
                 "tempo_leitura": tempo_leitura,
                 "imagem_url": og_img,
                 "publicado_em": publicado_em,
                 "_sort_date": chave_data,
-                "_is_inatel": eh_item_inatel,
             }
         except Exception:
             return None
@@ -499,9 +419,12 @@ async def _raspar_artigo(
 async def _descobrir_urls_inatel(client: httpx.AsyncClient) -> list[str]:
     urls: list[str] = []
     vistos: set[str] = set()
-    base = "https://inatel.br/noticias/"
 
-    for pagina in (base, "https://inatel.br/home/"):
+    for pagina in (
+        "https://inatel.br/noticias/",
+        "https://inatel.br/home/",
+        "https://inatel.br/noticias/?start=10",
+    ):
         try:
             resp = await client.get(pagina, follow_redirects=True, timeout=14.0)
             if resp.status_code >= 400:
@@ -525,55 +448,22 @@ async def _descobrir_urls_inatel(client: httpx.AsyncClient) -> list[str]:
         except Exception:
             continue
 
-    return urls[:8]
+    return urls[:14]
 
 
-async def _descobrir_urls_g1_regiao(client: httpx.AsyncClient) -> list[str]:
-    urls: list[str] = []
-    vistos: set[str] = set()
-    paginas = [
-        "https://g1.globo.com/mg/sul-de-minas/cidade/santa-rita-do-sapucai/",
-    ]
-    for pagina in paginas:
-        try:
-            resp = await client.get(pagina, follow_redirects=True, timeout=14.0)
-            if resp.status_code >= 400:
-                continue
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for a in soup.select("a.feed-post-link"):
-                href = (a.get("href") or "").split("#")[0].split("?")[0].strip()
-                titulo_link = _limpar_espacos(a.get_text(" "))
-                if not href.startswith("https://g1.globo.com/"):
-                    continue
-                if not _eh_conteudo_adequado(titulo_link, "", href):
-                    continue
-                if href not in vistos:
-                    vistos.add(href)
-                    urls.append(href)
-        except Exception:
-            continue
-    return urls[:6]
-
-
-async def _descobrir_itens_bing_rss(client: httpx.AsyncClient) -> list[dict]:
+async def _descobrir_itens_bing_inatel(client: httpx.AsyncClient) -> list[dict]:
     encontrados: list[dict] = []
     vistos: set[str] = set()
-    consultas = [
-        ("Inatel", True),
-        ('"Santa Rita do Sapucaí"', False),
-    ]
-    for query, foco_inatel in consultas:
-        try:
-            resp = await client.get(
-                "https://www.bing.com/news/search",
-                params={"q": query, "format": "rss", "mkt": "pt-BR"},
-                follow_redirects=True,
-                timeout=12.0,
-            )
-            if resp.status_code >= 400 or not resp.text:
-                continue
+    try:
+        resp = await client.get(
+            "https://www.bing.com/news/search",
+            params={"q": "site:inatel.br/noticias", "format": "rss", "mkt": "pt-BR"},
+            follow_redirects=True,
+            timeout=12.0,
+        )
+        if resp.status_code < 400 and resp.text:
             root = ET.fromstring(resp.text)
-            for item in root.findall(".//item")[:6]:
+            for item in root.findall(".//item")[:8]:
                 titulo = _limpar_espacos(item.findtext("title", ""))
                 link_rss = _limpar_espacos(item.findtext("link", ""))
                 desc = _limpar_espacos(item.findtext("description", ""))
@@ -581,38 +471,29 @@ async def _descobrir_itens_bing_rss(client: httpx.AsyncClient) -> list[dict]:
 
                 qs = parse_qs(urlparse(link_rss).query)
                 real_url = unquote(qs.get("url", [link_rss])[0]).split("#")[0].strip()
-                if not real_url.startswith("http"):
-                    continue
-                if not _eh_conteudo_adequado(titulo, desc, real_url):
+                if not real_url.startswith("https://inatel.br/noticias/"):
                     continue
                 if real_url not in vistos:
                     vistos.add(real_url)
                     encontrados.append(
                         {
                             "url": real_url,
-                            "eh_inatel": foco_inatel or ("inatel" in titulo.lower()),
                             "pub": pub,
                             "titulo": titulo,
                             "desc": desc,
                         }
                     )
-        except Exception:
-            continue
-    return encontrados[:6]
+    except Exception:
+        pass
+    return encontrados
 
 
-async def coletar_noticias_reais_inatel_e_regiao() -> list[dict]:
-    """
-    Coleta notícias 100% reais do Portal Oficial do Inatel e de portais regionais
-    de Santa Rita do Sapucaí / Sul de Minas, gerando um Resumão estruturado para cada matéria
-    e preservando o link oficial para leitura na fonte.
-    """
+async def coletar_noticias_reais_inatel() -> list[dict]:
     sem = asyncio.Semaphore(6)
     async with httpx.AsyncClient(headers=DEFAULT_HEADERS, verify=True) as client:
-        inatel_urls, g1_urls, bing_items = await asyncio.gather(
+        inatel_urls, bing_items = await asyncio.gather(
             _descobrir_urls_inatel(client),
-            _descobrir_urls_g1_regiao(client),
-            _descobrir_itens_bing_rss(client),
+            _descobrir_itens_bing_inatel(client),
         )
 
         tarefas = []
@@ -622,24 +503,17 @@ async def coletar_noticias_reais_inatel_e_regiao() -> list[dict]:
             chave = u.rstrip("/").lower()
             if chave not in urls_agendadas:
                 urls_agendadas.add(chave)
-                tarefas.append(_raspar_artigo(client, sem, u, eh_inatel=True))
-
-        for u in g1_urls:
-            chave = u.rstrip("/").lower()
-            if chave not in urls_agendadas:
-                urls_agendadas.add(chave)
-                tarefas.append(_raspar_artigo(client, sem, u, eh_inatel=False))
+                tarefas.append(_raspar_artigo_inatel(client, sem, u))
 
         for b in bing_items:
             chave = b["url"].rstrip("/").lower()
             if chave not in urls_agendadas:
                 urls_agendadas.add(chave)
                 tarefas.append(
-                    _raspar_artigo(
+                    _raspar_artigo_inatel(
                         client,
                         sem,
                         b["url"],
-                        eh_inatel=b["eh_inatel"],
                         data_fallback=b["pub"],
                         titulo_fallback=b["titulo"],
                         resumo_fallback=b["desc"],
@@ -648,13 +522,14 @@ async def coletar_noticias_reais_inatel_e_regiao() -> list[dict]:
 
         resultados_brutos = await asyncio.gather(*tarefas)
 
-    # Filtra falhas e deduplica por título normalizado e URL final
     artigos_validos: list[dict] = []
     titulos_vistos: set[str] = set()
     urls_vistas: set[str] = set()
 
     for art in resultados_brutos:
         if not art or not art.get("url_original"):
+            continue
+        if "inatel.br" not in art["url_original"].lower():
             continue
         chave_url = art["url_original"].rstrip("/").lower()
         chave_titulo = re.sub(r"[^a-z0-9]", "", art["titulo"].lower())[:55]
@@ -664,16 +539,11 @@ async def coletar_noticias_reais_inatel_e_regiao() -> list[dict]:
         titulos_vistos.add(chave_titulo)
         artigos_validos.append(art)
 
-    # Ordena das mais recentes para as mais antigas (priorizando leve desempate a favor do Inatel na mesma data)
-    artigos_validos.sort(
-        key=lambda x: (x["_sort_date"], 1 if x["_is_inatel"] else 0),
-        reverse=True,
-    )
+    artigos_validos.sort(key=lambda x: x["_sort_date"], reverse=True)
 
-    # Marca a notícia mais recente do Inatel como destaque principal
     destaque_definido = False
     for art in artigos_validos:
-        if art["_is_inatel"] and art.get("imagem_url") and not destaque_definido:
+        if art.get("imagem_url") and not destaque_definido:
             art["destaque"] = True
             destaque_definido = True
         else:
@@ -682,10 +552,8 @@ async def coletar_noticias_reais_inatel_e_regiao() -> list[dict]:
     if not destaque_definido and artigos_validos:
         artigos_validos[0]["destaque"] = True
 
-    # Remove chaves auxiliares internas
     for art in artigos_validos:
         art.pop("_sort_date", None)
-        art.pop("_is_inatel", None)
 
     return artigos_validos
 
@@ -703,31 +571,25 @@ def chave_ordenacao_noticia(noticia) -> tuple:
 
 async def sincronizar_noticias_no_banco(session) -> tuple[int, int]:
     """
-    Remove eventuais notícias mockadas legadas (sem URL real) e sincroniza
-    as notícias reais do Inatel e de Santa Rita do Sapucaí / Sul de Minas no banco.
+    Remove notícias que não pertençam ao domínio oficial do Inatel (inatel.br)
+    e sincroniza as notícias reais do Portal Inatel no banco.
     Retorna (inseridas, atualizadas).
     """
-    from sqlalchemy import delete, or_, select
+    from sqlalchemy import delete, func, or_, select
     from models import Noticia
 
-    # 1. Remove notícias mockadas antigas do seed anterior (sem url_original e com imagem unsplash ou autores fictícios)
-    AUTORES_MOCK_LEGADO = (
-        "Assessoria de Comunicação Inatel",
-        "Equipe NESP Carreiras",
-        "Incubadora Inatel",
-        "Secretaria Acadêmica",
-    )
+    # Remove qualquer notícia externa/regional ou mockada que não seja do Portal Inatel (inatel.br)
     await session.execute(
         delete(Noticia).where(
-            or_(Noticia.url_original.is_(None), Noticia.url_original == ""),
             or_(
-                Noticia.imagem_url.like("%images.unsplash.com%"),
-                Noticia.autor.in_(AUTORES_MOCK_LEGADO),
-            ),
+                Noticia.url_original.is_(None),
+                Noticia.url_original == "",
+                ~func.lower(Noticia.url_original).like("%inatel.br%"),
+            )
         )
     )
 
-    coletadas = await coletar_noticias_reais_inatel_e_regiao()
+    coletadas = await coletar_noticias_reais_inatel()
     if not coletadas:
         await session.commit()
         return (0, 0)
@@ -743,7 +605,6 @@ async def sincronizar_noticias_no_banco(session) -> tuple[int, int]:
     inseridas = 0
     atualizadas = 0
 
-    # Insere das mais antigas para as mais recentes para que os IDs também reflitam cronologia
     for dados in reversed(coletadas):
         chave = dados["url_original"].rstrip("/").lower()
         existente = mapa_por_url.get(chave)

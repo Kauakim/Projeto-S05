@@ -13,7 +13,7 @@ class Usuario(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(120), nullable=False)
-    matricula = Column(String(30), nullable=False, unique=True)
+    matricula = Column(Integer, nullable=False, unique=True)
     curso = Column(String(120), nullable=False)
     periodo = Column(Integer, nullable=False, default=5)
     email = Column(String(150), nullable=False, unique=True)
@@ -23,14 +23,20 @@ class Usuario(Base):
     github = Column(String(200), nullable=True, default="")
     linkedin = Column(String(200), nullable=True, default="")
     areas_interesse = Column(String(250), nullable=True, default="")
-    ira = Column(Float, nullable=False, default=84.5)
-    horas_complementares = Column(Integer, nullable=False, default=96)
+    crs = Column(Float, nullable=False, default=84.5)
+    horas_complementares = Column(Integer, nullable=False, default=112)
     meta_horas = Column(Integer, nullable=False, default=160)
+    horas_ac = Column(Integer, nullable=False, default=112)
+    meta_ac = Column(Integer, nullable=False, default=160)
+    horas_cp = Column(Integer, nullable=False, default=28)
+    meta_cp = Column(Integer, nullable=False, default=40)
+    horas_trilha = Column(Integer, nullable=False, default=80)
+    meta_trilha = Column(Integer, nullable=False, default=120)
     disponivel_estagio = Column(Boolean, nullable=False, default=True)
     atualizado_em = Column(DateTime_compat := String(40), nullable=True)
 
-    candidaturas = relationship(
-        "Candidatura",
+    aulas = relationship(
+        "Aula",
         back_populates="usuario",
         cascade="all, delete-orphan",
     )
@@ -51,16 +57,26 @@ class Aula(Base):
     __tablename__ = "aulas"
 
     id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(
+        Integer,
+        ForeignKey("usuarios.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     codigo = Column(String(20), nullable=False)
+    turma = Column(String(30), nullable=False, default="A")
     disciplina = Column(String(160), nullable=False)
     professor = Column(String(120), nullable=False)
-    dia = Column(String(10), nullable=False, index=True)  # seg, ter, qua, qui, sex
+    dia = Column(String(10), nullable=False, index=True)  # seg, ter, qua, qui, sex, sab
     horario = Column(String(30), nullable=False)
     local = Column(String(50), nullable=False)
     prova_alert = Column(Boolean, nullable=False, default=False)
     prova_data = Column(String(20), nullable=True, default="")
-    frequencia = Column(String(20), nullable=False, default="0/25")
+    frequencia = Column(String(20), nullable=False, default="00/25")
     nota = Column(Float, nullable=False, default=0.0)
+    avaliacoes_json = Column(Text, nullable=False, default="[]")
+
+    usuario = relationship("Usuario", back_populates="aulas")
 
 
 class Evento(Base):
@@ -76,46 +92,6 @@ class Evento(Base):
     imagem_url = Column(String(400), nullable=False)
 
 
-class Vaga(Base):
-    __tablename__ = "vagas"
-
-    id = Column(Integer, primary_key=True, index=True)
-    titulo = Column(String(160), nullable=False)
-    empresa = Column(String(120), nullable=False)
-    tipo = Column(String(50), nullable=False, index=True)  # Estágio, Iniciação Científica, Júnior, Trainee
-    modalidade = Column(String(40), nullable=False)  # Presencial, Híbrido, Remoto
-    localizacao = Column(String(120), nullable=False)
-    bolsa_ou_salario = Column(String(80), nullable=False)
-    area = Column(String(80), nullable=False)
-    requisitos = Column(String(300), nullable=False)
-    descricao = Column(Text, nullable=False)
-    prazo = Column(String(30), nullable=False)
-    contato_email = Column(String(150), nullable=True, default="nesp@inatel.br")
-    ativa = Column(Boolean, nullable=False, default=True)
-    criado_em = Column(String(30), nullable=False, default=lambda: utcnow_naive().strftime("%d/%m/%Y"))
-
-    candidaturas = relationship(
-        "Candidatura",
-        back_populates="vaga",
-        cascade="all, delete-orphan",
-    )
-
-
-class Candidatura(Base):
-    __tablename__ = "candidaturas"
-
-    id = Column(Integer, primary_key=True, index=True)
-    vaga_id = Column(Integer, ForeignKey("vagas.id", ondelete="CASCADE"), nullable=False, index=True)
-    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
-    mensagem = Column(Text, nullable=True, default="")
-    link_portfolio = Column(String(250), nullable=True, default="")
-    status = Column(String(40), nullable=False, default="Em análise pelo NESP")
-    criado_em = Column(String(30), nullable=False, default=lambda: utcnow_naive().strftime("%d/%m/%Y %H:%M"))
-
-    vaga = relationship("Vaga", back_populates="candidaturas")
-    usuario = relationship("Usuario", back_populates="candidaturas")
-
-
 class Noticia(Base):
     __tablename__ = "noticias"
 
@@ -123,7 +99,7 @@ class Noticia(Base):
     titulo = Column(String(240), nullable=False)
     resumo = Column(String(350), nullable=False)
     conteudo = Column(Text, nullable=False)
-    categoria = Column(String(50), nullable=False, index=True)  # Inovação, Acadêmico, Carreira, Pesquisa, Eventos, Região
+    categoria = Column(String(50), nullable=False, index=True)  # Inovação, Acadêmico, Carreira, Pesquisa, Eventos
     autor = Column(String(100), nullable=False)
     fonte_nome = Column(String(120), nullable=True, default="")
     url_original = Column(String(600), nullable=True, default="")

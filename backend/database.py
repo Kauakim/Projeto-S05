@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import AsyncGenerator
 from dotenv import load_dotenv
@@ -32,22 +33,100 @@ active_db_mode: str = "uninitialized"
 
 
 async def _ensure_schema_migrations(conn: AsyncConnection) -> None:
-    """Garante que bancos já criados anteriormente recebam novas colunas de autenticação e notícias reais."""
+    """Garante que bancos já criados anteriormente recebam novas colunas acadêmicas, autenticação e notícias."""
 
     def get_existing_columns(sync_conn) -> dict[str, set[str]]:
         insp = inspect(sync_conn)
         result: dict[str, set[str]] = {}
-        for tbl in ("usuarios", "noticias"):
+        for tbl in ("usuarios", "aulas", "noticias"):
             if insp.has_table(tbl):
                 result[tbl] = {c["name"] for c in insp.get_columns(tbl)}
         return result
 
     existing = await conn.run_sync(get_existing_columns)
 
-    if "usuarios" in existing and "senha_hash" not in existing["usuarios"]:
-        await conn.execute(
-            text("ALTER TABLE usuarios ADD COLUMN senha_hash VARCHAR(255) NOT NULL DEFAULT ''")
-        )
+    if "usuarios" in existing:
+        u_cols = existing["usuarios"]
+        if "senha_hash" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN senha_hash VARCHAR(255) NOT NULL DEFAULT ''")
+            )
+        if "crs" not in u_cols:
+            if "ira" in u_cols:
+                await conn.execute(text("ALTER TABLE usuarios RENAME COLUMN ira TO crs"))
+            else:
+                await conn.execute(
+                    text("ALTER TABLE usuarios ADD COLUMN crs FLOAT NOT NULL DEFAULT 84.5")
+                )
+        adicionou_ac = False
+        if "horas_ac" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN horas_ac INTEGER NOT NULL DEFAULT 112")
+            )
+            adicionou_ac = True
+        if "meta_ac" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN meta_ac INTEGER NOT NULL DEFAULT 160")
+            )
+        if "horas_cp" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN horas_cp INTEGER NOT NULL DEFAULT 28")
+            )
+        if "meta_cp" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN meta_cp INTEGER NOT NULL DEFAULT 40")
+            )
+        if "horas_trilha" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN horas_trilha INTEGER NOT NULL DEFAULT 80")
+            )
+        if "meta_trilha" not in u_cols:
+            await conn.execute(
+                text("ALTER TABLE usuarios ADD COLUMN meta_trilha INTEGER NOT NULL DEFAULT 120")
+            )
+        if adicionou_ac:
+            await conn.execute(
+                text("UPDATE usuarios SET horas_ac = horas_complementares, meta_ac = meta_horas")
+            )
+
+        # Normaliza matrículas legadas (ex: 'GES-2048' -> 2048) para inteiro entre 0 e 999999
+        res_mats = await conn.execute(text("SELECT id, matricula FROM usuarios ORDER BY id ASC"))
+        usados: set[int] = set()
+        ajustes: list[tuple[int, int]] = []
+        for row_id, raw_mat in res_mats.fetchall():
+            texto_mat = str(raw_mat or "").strip()
+            digitos = re.sub(r"\D", "", texto_mat)
+            num = int(digitos[:6]) if digitos else int(row_id)
+            num = max(0, min(999999, num))
+            while num in usados:
+                num = (num + 1) % 1000000
+            usados.add(num)
+            if not isinstance(raw_mat, int) or raw_mat != num:
+                ajustes.append((int(row_id), num))
+
+        for uid, novo_num in ajustes:
+            await conn.execute(
+                text("UPDATE usuarios SET matricula = :mat WHERE id = :uid"),
+                {"mat": novo_num, "uid": uid},
+            )
+
+        if conn.dialect.name == "postgresql":
+            await conn.execute(
+                text("ALTER TABLE usuarios ALTER COLUMN matricula TYPE INTEGER USING matricula::integer")
+            )
+
+    if "aulas" in existing:
+        a_cols = existing["aulas"]
+        if "usuario_id" not in a_cols:
+            await conn.execute(text("ALTER TABLE aulas ADD COLUMN usuario_id INTEGER"))
+        if "turma" not in a_cols:
+            await conn.execute(
+                text("ALTER TABLE aulas ADD COLUMN turma VARCHAR(30) NOT NULL DEFAULT 'A'")
+            )
+        if "avaliacoes_json" not in a_cols:
+            await conn.execute(
+                text("ALTER TABLE aulas ADD COLUMN avaliacoes_json TEXT NOT NULL DEFAULT '[]'")
+            )
 
     if "noticias" in existing:
         if "url_original" not in existing["noticias"]:

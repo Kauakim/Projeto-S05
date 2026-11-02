@@ -79,48 +79,32 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  // Painel (Aulas & Eventos)
+  // Painel (Aulas, Turmas, Provas, Notas & Eventos)
   getAulas: (dia) => {
     const q = dia && dia !== 'todas' ? `?dia=${encodeURIComponent(dia)}` : '';
     return request(`/api/aulas${q}`);
   },
+  createAula: (payload) =>
+    request('/api/aulas', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAula: (aulaId, payload) =>
+    request(`/api/aulas/${aulaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteAula: (aulaId) =>
+    request(`/api/aulas/${aulaId}`, {
+      method: 'DELETE',
+    }),
   getEventos: () => request('/api/eventos'),
 
-  // Vagas & Candidaturas (NESP)
-  getVagas: ({ busca = '', tipo = 'todas', modalidade = 'todas' } = {}) => {
-    const params = new URLSearchParams();
-    if (busca.trim()) params.set('busca', busca.trim());
-    if (tipo && tipo !== 'todas') params.set('tipo', tipo);
-    if (modalidade && modalidade !== 'todas') params.set('modalidade', modalidade);
-    const qs = params.toString();
-    return request(`/api/vagas${qs ? `?${qs}` : ''}`);
-  },
-  createVaga: (payload) =>
-    request('/api/vagas', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  deleteVaga: (vagaId) =>
-    request(`/api/vagas/${vagaId}`, {
-      method: 'DELETE',
-    }),
-  candidatarVaga: (vagaId, payload) =>
-    request(`/api/vagas/${vagaId}/candidatar`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  getCandidaturas: () => request('/api/candidaturas'),
-  cancelarCandidatura: (candidaturaId) =>
-    request(`/api/candidaturas/${candidaturaId}`, {
-      method: 'DELETE',
-    }),
-
-  // Notícias Reais (Inatel & Região)
-  getNoticias: ({ busca = '', categoria = 'todas', origem = 'todas' } = {}) => {
+  // Notícias Reais do Portal Inatel
+  getNoticias: ({ busca = '', categoria = 'todas' } = {}) => {
     const params = new URLSearchParams();
     if (busca.trim()) params.set('busca', busca.trim());
     if (categoria && categoria !== 'todas') params.set('categoria', categoria);
-    if (origem && origem !== 'todas') params.set('origem', origem);
     const qs = params.toString();
     return request(`/api/noticias${qs ? `?${qs}` : ''}`);
   },

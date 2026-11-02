@@ -18,9 +18,6 @@ const CURSOS_INATEL = [
 export default function UserProfilePage({
   usuario,
   aulas = [],
-  vagas = [],
-  candidaturas = [],
-  vagasSalvasIds = [],
   analiseLinkedIn = null,
   secaoSolicitada = null,
   onSecaoSolicitadaConsumida,
@@ -28,14 +25,12 @@ export default function UserProfilePage({
   onRefreshUsuario,
   onAnaliseLinkedInAtualizada,
   onIrParaVagasLinkedIn,
-  onRefreshVagasECandidaturas,
-  onToggleSalvarVaga,
   onNavigate,
   onNotify,
   onLogout,
 }) {
-  // Abas internas: 'resumo' | 'linkedin' | 'dados' | 'seguranca'
-  const [secaoAtiva, setSecaoAtiva] = useState('resumo');
+  // Abas internas: 'horas' | 'linkedin' | 'dados' | 'seguranca'
+  const [secaoAtiva, setSecaoAtiva] = useState('horas');
 
   useEffect(() => {
     if (secaoSolicitada) {
@@ -43,6 +38,7 @@ export default function UserProfilePage({
       if (onSecaoSolicitadaConsumida) onSecaoSolicitadaConsumida();
     }
   }, [secaoSolicitada, onSecaoSolicitadaConsumida]);
+
   const [ocultarDadosSensiveis, setOcultarDadosSensiveis] = useState(false);
   const [salvandoDados, setSalvandoDados] = useState(false);
   const [salvandoSenha, setSalvandoSenha] = useState(false);
@@ -59,8 +55,13 @@ export default function UserProfilePage({
     github: '',
     linkedin: '',
     areas_interesse: '',
-    horas_complementares: 0,
-    disponivel_estagio: true,
+    crs: 86.4,
+    horas_ac: 112,
+    meta_ac: 160,
+    horas_cp: 28,
+    meta_cp: 40,
+    horas_trilha: 80,
+    meta_trilha: 120,
   });
 
   const [senhaForm, setSenhaForm] = useState({
@@ -73,7 +74,7 @@ export default function UserProfilePage({
     if (usuario) {
       setForm({
         nome: usuario.nome || '',
-        matricula: usuario.matricula || '',
+        matricula: usuario.matricula ?? '',
         curso: usuario.curso || 'Engenharia de Software',
         periodo: usuario.periodo || 6,
         email: usuario.email || '',
@@ -82,8 +83,13 @@ export default function UserProfilePage({
         github: usuario.github || '',
         linkedin: usuario.linkedin || '',
         areas_interesse: usuario.areas_interesse || '',
-        horas_complementares: usuario.horas_complementares ?? 0,
-        disponivel_estagio: usuario.disponivel_estagio ?? true,
+        crs: usuario.crs ?? 86.4,
+        horas_ac: usuario.horas_ac ?? usuario.horas_complementares ?? 0,
+        meta_ac: usuario.meta_ac ?? usuario.meta_horas ?? 160,
+        horas_cp: usuario.horas_cp ?? 0,
+        meta_cp: usuario.meta_cp ?? 40,
+        horas_trilha: usuario.horas_trilha ?? 0,
+        meta_trilha: usuario.meta_trilha ?? 120,
       });
     }
   }, [usuario]);
@@ -94,16 +100,32 @@ export default function UserProfilePage({
     return soma / aulas.length;
   }, [aulas]);
 
-  const percentualHoras = useMemo(() => {
-    const meta = usuario?.meta_horas || 160;
-    const atual = usuario?.horas_complementares || 0;
-    return Math.min(100, Math.round((atual / meta) * 100));
-  }, [usuario]);
+  const progressoPilares = useMemo(() => {
+    const acAtual = usuario?.horas_ac ?? usuario?.horas_complementares ?? 0;
+    const acMeta = Math.max(1, usuario?.meta_ac ?? usuario?.meta_horas ?? 160);
+    const cpAtual = usuario?.horas_cp ?? 0;
+    const cpMeta = Math.max(1, usuario?.meta_cp ?? 40);
+    const trilhaAtual = usuario?.horas_trilha ?? 0;
+    const trilhaMeta = Math.max(1, usuario?.meta_trilha ?? 120);
 
-  const vagasSalvas = useMemo(
-    () => vagas.filter((v) => vagasSalvasIds.includes(v.id)),
-    [vagas, vagasSalvasIds]
-  );
+    return {
+      ac: {
+        atual: acAtual,
+        meta: acMeta,
+        pct: Math.min(100, Math.round((acAtual / acMeta) * 100)),
+      },
+      cp: {
+        atual: cpAtual,
+        meta: cpMeta,
+        pct: Math.min(100, Math.round((cpAtual / cpMeta) * 100)),
+      },
+      trilha: {
+        atual: trilhaAtual,
+        meta: trilhaMeta,
+        pct: Math.min(100, Math.round((trilhaAtual / trilhaMeta) * 100)),
+      },
+    };
+  }, [usuario]);
 
   const forcaNovaSenha = useMemo(() => {
     const s = senhaForm.nova_senha;
@@ -121,16 +143,52 @@ export default function UserProfilePage({
   const handleSalvarPerfil = async (e) => {
     e.preventDefault();
     setSalvandoDados(true);
+    const matTexto = String(form.matricula ?? '').trim();
+    const matNumero = Number(matTexto);
+    if (!/^\d+$/.test(matTexto) || !Number.isInteger(matNumero) || matNumero < 0 || matNumero > 999999) {
+      onNotify('A matrícula deve ser um número inteiro entre 0 e 999999.', 'error');
+      setSalvandoDados(false);
+      return;
+    }
     try {
       const atualizado = await api.updateUsuario({
         ...form,
+        matricula: matNumero,
         periodo: Number(form.periodo),
-        horas_complementares: Number(form.horas_complementares),
+        crs: Number(form.crs),
+        horas_ac: Math.max(0, Number(form.horas_ac)),
+        meta_ac: Math.max(1, Number(form.meta_ac)),
+        horas_cp: Math.max(0, Number(form.horas_cp)),
+        meta_cp: Math.max(1, Number(form.meta_cp)),
+        horas_trilha: Math.max(0, Number(form.horas_trilha)),
+        meta_trilha: Math.max(1, Number(form.meta_trilha)),
       });
       onUsuarioAtualizado(atualizado);
-      onNotify('Dados da conta atualizados com sucesso!');
+      onNotify('Dados acadêmicos, horas e perfil atualizados com sucesso!');
     } catch (err) {
       onNotify(err.message || 'Erro ao salvar alterações do perfil.', 'error');
+    } finally {
+      setSalvandoDados(false);
+    }
+  };
+
+  const handleSalvarTotaisHorasECrs = async (e) => {
+    e.preventDefault();
+    setSalvandoDados(true);
+    try {
+      const atualizado = await api.updateUsuario({
+        crs: Number(form.crs),
+        horas_ac: Math.max(0, Number(form.horas_ac)),
+        meta_ac: Math.max(1, Number(form.meta_ac)),
+        horas_cp: Math.max(0, Number(form.horas_cp)),
+        meta_cp: Math.max(1, Number(form.meta_cp)),
+        horas_trilha: Math.max(0, Number(form.horas_trilha)),
+        meta_trilha: Math.max(1, Number(form.meta_trilha)),
+      });
+      onUsuarioAtualizado(atualizado);
+      onNotify('Horas de AC, CP, Trilha, metas e CRS atualizados!');
+    } catch (err) {
+      onNotify(err.message || 'Erro ao salvar horas validadas.', 'error');
     } finally {
       setSalvandoDados(false);
     }
@@ -154,47 +212,10 @@ export default function UserProfilePage({
     }
   };
 
-  const handleCancelarCandidatura = async (candId) => {
-    try {
-      await api.cancelarCandidatura(candId);
-      await onRefreshVagasECandidaturas();
-      onNotify('Candidatura cancelada com sucesso.');
-    } catch (err) {
-      onNotify(err.message || 'Erro ao cancelar candidatura.', 'error');
-    }
-  };
-
-  const handleExportarComprovante = () => {
-    const conteudo = [
-      '======================================================',
-      '   INSTITUTO NACIONAL DE TELECOMUNICAÇÕES - INATEL    ',
-      '        COMPROVANTE DIGITAL DE VÍNCULO ACADÊMICO      ',
-      '======================================================',
-      `Aluno(a): ${usuario?.nome || ''}`,
-      `Matrícula: ${usuario?.matricula || ''}`,
-      `Curso: ${usuario?.curso || ''} (${usuario?.periodo || ''}º período)`,
-      `E-mail institucional: ${usuario?.email || ''}`,
-      `IRA / Rendimento: ${usuario?.ira?.toFixed(1) || '86.4'}%`,
-      `Horas Complementares: ${usuario?.horas_complementares || 0}/${usuario?.meta_horas || 160}h`,
-      `Status NESP: ${usuario?.disponivel_estagio ? 'Disponível para Estágio' : 'Indisponível'}`,
-      `Emitido em: ${new Date().toLocaleString('pt-BR')}`,
-      '======================================================',
-    ].join('\n');
-
-    const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `comprovante_inatel_${(usuario?.matricula || 'aluno').toLowerCase()}.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
-    onNotify('Comprovante acadêmico exportado!');
-  };
-
   return (
     <div className="space-y-7">
       {/* ==========================================
-          1. CARTEIRINHA DIGITAL + INDICADORES ACADÊMICOS
+          1. CARTEIRINHA DIGITAL + INDICADORES ACADÊMICOS (AC, CP, TRILHA & CRS)
           ========================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Carteirinha Estudantil Digital Inatel (5 colunas) */}
@@ -212,14 +233,6 @@ export default function UserProfilePage({
                   name={ocultarDadosSensiveis ? 'closedEye' : 'openEye'}
                   className="w-4 h-4 text-white"
                 />
-              </button>
-              <button
-                type="button"
-                onClick={handleExportarComprovante}
-                title="Baixar comprovante de matrícula"
-                className="p-2 rounded-lg bg-white/15 hover:bg-white/25 transition cursor-pointer"
-              >
-                <Icon name="download" className="w-4 h-4 text-white" />
               </button>
             </div>
           </div>
@@ -247,7 +260,7 @@ export default function UserProfilePage({
             <div>
               <span className="text-white/70 block">Matrícula</span>
               <strong className="text-sm font-mono">
-                {ocultarDadosSensiveis ? '•••-••••' : usuario?.matricula}
+                {ocultarDadosSensiveis ? '••••••' : (usuario?.matricula ?? '')}
               </strong>
             </div>
             <div>
@@ -270,26 +283,26 @@ export default function UserProfilePage({
         </section>
 
         {/* Indicadores de Rendimento Acadêmico (7 colunas) */}
-        <section className="lg:col-span-7 theme-surface border rounded-2xl p-6 shadow-xs flex flex-col justify-between gap-5">
+        <section className="lg:col-span-7 theme-surface border rounded-2xl p-6 shadow-xs flex flex-col justify-between gap-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="text-lg font-extrabold flex items-center gap-2">
                 <Icon name="chartBar" className="w-5 h-5 theme-accent-text" />
-                Central da Conta &amp; Rendimento
+                Central da Conta &amp; Horas Curriculares
               </h2>
               <p className="text-xs sm:text-sm theme-text-secondary">
-                Gerencie seu nome, e-mail, senha e acompanhe suas métricas no Inatel.
+                Gerencie seu CRS, horas validadas de AC, CP e Trilha, dados pessoais e senha.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSecaoAtiva('linkedin')}
+                onClick={() => setSecaoAtiva('horas')}
                 className="theme-btn-primary px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
               >
-                <Icon name="link" className="w-3.5 h-3.5" />
-                <span>Analisar LinkedIn</span>
+                <Icon name="hourglass" className="w-3.5 h-3.5" />
+                <span>Editar AC, CP &amp; Trilha</span>
               </button>
               <button
                 type="button"
@@ -299,75 +312,140 @@ export default function UserProfilePage({
                 <Icon name="edit" className="w-3.5 h-3.5" />
                 <span>Editar Dados</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setSecaoAtiva('seguranca')}
-                className="theme-muted border px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:opacity-85 transition cursor-pointer"
-              >
-                <Icon name="key" className="w-3.5 h-3.5" />
-                <span>Alterar Senha</span>
-              </button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="theme-muted border rounded-xl p-3.5">
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('horas')}
+              className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold theme-text-secondary uppercase">IRA</span>
+                <span className="text-[11px] font-bold theme-text-secondary uppercase">CRS</span>
                 <Icon name="chartPie" className="w-4 h-4 theme-accent-text" />
               </div>
-              <p className="text-xl font-extrabold">{usuario?.ira?.toFixed(1) || '86.4'}%</p>
-              <span className="text-[11px] theme-text-secondary">Rendimento Global</span>
-            </div>
+              <p className="text-xl font-extrabold">{usuario?.crs !== undefined ? `${Number(usuario.crs).toFixed(1)}%` : '86.4%'}</p>
+              <span className="text-[11px] theme-text-secondary">Coeficiente semestral</span>
+            </button>
 
-            <div className="theme-muted border rounded-xl p-3.5">
+            <button
+              type="button"
+              onClick={() => onNavigate('dashboard')}
+              className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer"
+            >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] font-bold theme-text-secondary uppercase">Média</span>
                 <Icon name="cap" className="w-4 h-4 theme-accent-text" />
               </div>
               <p className="text-xl font-extrabold">{mediaDisciplinasSemestre.toFixed(1)}</p>
               <span className="text-[11px] theme-text-secondary">{aulas.length} disciplinas</span>
-            </div>
+            </button>
 
-            <div className="theme-muted border rounded-xl p-3.5">
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('horas')}
+              className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold theme-text-secondary uppercase">Vagas</span>
-                <Icon name="check" className="w-4 h-4 text-emerald-600" />
+                <span className="text-[11px] font-bold theme-text-secondary uppercase">Horas</span>
+                <Icon name="hourglass" className="w-4 h-4 text-emerald-600" />
               </div>
-              <p className="text-xl font-extrabold">{candidaturas.length}</p>
-              <span className="text-[11px] theme-text-secondary">Candidaturas ativas</span>
-            </div>
-
-            <div className="theme-muted border rounded-xl p-3.5">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold theme-text-secondary uppercase">NESP</span>
-                <Icon name="user" className="w-4 h-4 theme-accent-text" />
-              </div>
-              <p className="text-sm font-extrabold mt-1">
-                {usuario?.disponivel_estagio ? 'Disponível' : 'Pausado'}
+              <p className="text-xl font-extrabold">
+                {progressoPilares.ac.atual +
+                  progressoPilares.cp.atual +
+                  progressoPilares.trilha.atual}
+                h
               </p>
-              <span className="text-[11px] theme-text-secondary">Status p/ recrutadores</span>
-            </div>
+              <span className="text-[11px] theme-text-secondary">AC + CP + Trilha</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('linkedin')}
+              className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-bold theme-text-secondary uppercase">LinkedIn</span>
+                <Icon name="link" className="w-4 h-4 theme-accent-text" />
+              </div>
+              <p className="text-xl font-extrabold">
+                {analiseLinkedIn ? `${analiseLinkedIn.pontuacao_perfil}/100` : '—'}
+              </p>
+              <span className="text-[11px] theme-text-secondary">
+                {analiseLinkedIn ? 'Força do perfil' : 'Analisar perfil'}
+              </span>
+            </button>
           </div>
 
-          {/* Barra de Progresso de Horas Complementares */}
-          <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold flex items-center gap-1.5">
-                <Icon name="hourglass" className="w-3.5 h-3.5 theme-accent-text" />
-                Atividades Complementares (ACs)
+          {/* 3 Barras de Progresso: AC, CP e Trilha */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[var(--border-subtle)]">
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('horas')}
+              className="theme-muted border rounded-xl p-3 text-left space-y-1.5 hover:border-[#126ae2] transition cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold theme-accent-text">AC</span>
+                <span className="font-bold">
+                  {progressoPilares.ac.atual}/{progressoPilares.ac.meta}h ({progressoPilares.ac.pct}%)
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#126ae2] transition-all duration-500"
+                  style={{ width: `${progressoPilares.ac.pct}%` }}
+                />
+              </div>
+              <span className="text-[10px] theme-text-secondary block">
+                Atividades Complementares
               </span>
-              <span className="font-extrabold">
-                {usuario?.horas_complementares ?? 0}h / {usuario?.meta_horas ?? 160}h (
-                {percentualHoras}%)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('horas')}
+              className="theme-muted border rounded-xl p-3 text-left space-y-1.5 hover:border-emerald-500 transition cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">CP</span>
+                <span className="font-bold">
+                  {progressoPilares.cp.atual}/{progressoPilares.cp.meta}h ({progressoPilares.cp.pct}%)
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${progressoPilares.cp.pct}%` }}
+                />
+              </div>
+              <span className="text-[10px] theme-text-secondary block">
+                Competências Pessoais
               </span>
-            </div>
-            <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                style={{ width: `${percentualHoras}%` }}
-              />
-            </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSecaoAtiva('horas')}
+              className="theme-muted border rounded-xl p-3 text-left space-y-1.5 hover:border-purple-500 transition cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold text-purple-600 dark:text-purple-400">Trilha</span>
+                <span className="font-bold">
+                  {progressoPilares.trilha.atual}/{progressoPilares.trilha.meta}h (
+                  {progressoPilares.trilha.pct}%)
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                  style={{ width: `${progressoPilares.trilha.pct}%` }}
+                />
+              </div>
+              <span className="text-[10px] theme-text-secondary block">
+                Trilhas de Especialização
+              </span>
+            </button>
           </div>
         </section>
       </div>
@@ -378,15 +456,18 @@ export default function UserProfilePage({
       <div className="flex flex-wrap gap-2 border-b border-[var(--border-subtle)] pb-3">
         <button
           type="button"
-          onClick={() => setSecaoAtiva('resumo')}
+          onClick={() => setSecaoAtiva('horas')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition cursor-pointer ${
-            secaoAtiva === 'resumo'
+            secaoAtiva === 'horas'
               ? 'theme-btn-primary border-transparent shadow-xs'
               : 'theme-surface hover:opacity-85'
           }`}
         >
-          <Icon name="user" className="w-4 h-4" />
-          <span>Visão Geral &amp; Candidaturas</span>
+          <Icon name="hourglass" className="w-4 h-4" />
+          <span>Horas AC, CP &amp; Trilha</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-black/15">
+            {progressoPilares.ac.atual + progressoPilares.cp.atual + progressoPilares.trilha.atual}h
+          </span>
         </button>
 
         <button
@@ -399,7 +480,7 @@ export default function UserProfilePage({
           }`}
         >
           <Icon name="link" className="w-4 h-4" />
-          <span>Análise LinkedIn (Scraping)</span>
+          <span>Análise LinkedIn</span>
           {analiseLinkedIn && (
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-black/15">
               {analiseLinkedIn.pontuacao_perfil} pts
@@ -417,7 +498,7 @@ export default function UserProfilePage({
           }`}
         >
           <Icon name="edit" className="w-4 h-4" />
-          <span>Dados Cadastrais (Nome, E-mail, Curso...)</span>
+          <span>Dados Cadastrais</span>
         </button>
 
         <button
@@ -435,199 +516,197 @@ export default function UserProfilePage({
       </div>
 
       {/* ==========================================
-          ABA 1: VISÃO GERAL, BIO, CANDIDATURAS E SALVAS
+          ABA HORAS VALIDADAS: AC, CP, TRILHA & CRS (METAS E HORAS MANUAIS)
           ========================================== */}
-      {secaoAtiva === 'resumo' && (
+      {secaoAtiva === 'horas' && (
         <div className="space-y-6">
-          <section className="theme-surface border rounded-2xl p-6 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold flex items-center gap-2">
-                <Icon name="user" className="w-5 h-5 theme-accent-text" />
-                Apresentação &amp; Links Profissionais
-              </h2>
+          <section className="theme-surface border rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+              <div>
+                <h2 className="text-lg font-extrabold flex items-center gap-2">
+                  <Icon name="hourglass" className="w-5 h-5 theme-accent-text" />
+                  Controle de Horas Validadas (AC, CP &amp; Trilha) e CRS
+                </h2>
+                <p className="text-xs sm:text-sm theme-text-secondary mt-0.5">
+                  Acompanhe suas metas curriculares e ajuste manualmente as horas já validadas e o CRS do semestre.
+                </p>
+              </div>
 
               <div className="flex flex-wrap gap-2">
-                {usuario?.github && (
-                  <a
-                    href={usuario.github}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold theme-muted border hover:opacity-80"
-                  >
-                    <Icon name="link" className="w-3.5 h-3.5" />
-                    GitHub
-                  </a>
-                )}
-                {usuario?.linkedin && (
-                  <a
-                    href={usuario.linkedin}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold theme-muted border hover:opacity-80"
-                  >
-                    <Icon name="link" className="w-3.5 h-3.5" />
-                    LinkedIn
-                  </a>
-                )}
                 <button
                   type="button"
-                  onClick={() => setSecaoAtiva('linkedin')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold theme-badge-soft hover:opacity-90 cursor-pointer"
+                  onClick={() => onNavigate('dashboard')}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold theme-badge-soft hover:opacity-90 transition cursor-pointer"
                 >
-                  <Icon name="chartBar" className="w-3.5 h-3.5" />
-                  <span>
-                    {analiseLinkedIn
-                      ? `Diagnóstico LinkedIn (${analiseLinkedIn.pontuacao_perfil}/100)`
-                      : 'Coletar & Analisar LinkedIn'}
-                  </span>
+                  Gerenciar Aulas &amp; Provas →
                 </button>
               </div>
             </div>
 
-            <p className="text-sm theme-text-secondary leading-relaxed">
-              {usuario?.bio || 'Nenhuma biografia cadastrada.'}
-            </p>
-
-            {usuario?.areas_interesse && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {usuario.areas_interesse
-                  .split(',')
-                  .map((area) => area.trim())
-                  .filter(Boolean)
-                  .map((area) => (
-                    <span
-                      key={area}
-                      className="text-xs font-semibold px-3 py-1 rounded-full theme-badge-soft"
-                    >
-                      {area}
+            <form onSubmit={handleSalvarTotaisHorasECrs} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* AC */}
+                <div className="theme-muted border rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase theme-accent-text">
+                      AC
                     </span>
-                  ))}
-              </div>
-            )}
-          </section>
+                    <span className="text-xs font-bold">{progressoPilares.ac.pct}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Validadas (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={form.horas_ac}
+                        onChange={(e) => setForm((p) => ({ ...p, horas_ac: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Meta (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={form.meta_ac}
+                        onChange={(e) => setForm((p) => ({ ...p, meta_ac: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Minhas Candidaturas */}
-            <section className="theme-surface border rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-extrabold flex items-center gap-2">
-                  <Icon name="check" className="w-5 h-5 text-emerald-600" />
-                  Minhas Candidaturas ({candidaturas.length})
-                </h2>
+                {/* CP */}
+                <div className="theme-muted border rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase text-emerald-600 dark:text-emerald-400">
+                      CP
+                    </span>
+                    <span className="text-xs font-bold">{progressoPilares.cp.pct}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Validadas (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={form.horas_cp}
+                        onChange={(e) => setForm((p) => ({ ...p, horas_cp: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Meta (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={form.meta_cp}
+                        onChange={(e) => setForm((p) => ({ ...p, meta_cp: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trilha */}
+                <div className="theme-muted border rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase text-purple-600 dark:text-purple-400">
+                      Trilha
+                    </span>
+                    <span className="text-xs font-bold">{progressoPilares.trilha.pct}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Validadas (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={form.horas_trilha}
+                        onChange={(e) => setForm((p) => ({ ...p, horas_trilha: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                        Meta (h)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={form.meta_trilha}
+                        onChange={(e) => setForm((p) => ({ ...p, meta_trilha: e.target.value }))}
+                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* CRS */}
+                <div className="theme-muted border rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase">CRS</span>
+                    {aulas.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((p) => ({
+                            ...p,
+                            crs: Math.round(mediaDisciplinasSemestre * 10 * 10) / 10,
+                          }))
+                        }
+                        className="text-[11px] font-bold theme-accent-text hover:underline cursor-pointer"
+                      >
+                        Usar notas ({(mediaDisciplinasSemestre * 10).toFixed(1)}%)
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold theme-text-secondary block mb-1">
+                      Rendimento do Semestre (0 a 100%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      max={100}
+                      value={form.crs}
+                      onChange={(e) => setForm((p) => ({ ...p, crs: e.target.value }))}
+                      className="w-full theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
                 <button
-                  type="button"
-                  onClick={() => onNavigate('vagas-noticias')}
-                  className="text-xs font-bold theme-accent-text hover:underline cursor-pointer"
+                  type="submit"
+                  disabled={salvandoDados}
+                  className="theme-btn-primary px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  Buscar mais vagas →
+                  <Icon name="check" className="w-4 h-4" />
+                  <span>{salvandoDados ? 'Salvando...' : 'Salvar Horas Validadas, Metas & CRS'}</span>
                 </button>
               </div>
-
-              {candidaturas.length === 0 ? (
-                <div className="theme-muted border rounded-xl p-6 text-center space-y-2">
-                  <p className="text-sm font-semibold">
-                    Você ainda não se candidatou a nenhuma vaga.
-                  </p>
-                  <p className="text-xs theme-text-secondary">
-                    Acesse a página de Vagas &amp; Notícias para enviar seu perfil ao NESP!
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {candidaturas.map((cand) => (
-                    <div
-                      key={cand.id}
-                      className="theme-muted border rounded-xl p-4 flex flex-col gap-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-                            {cand.status}
-                          </span>
-                          <h3 className="text-sm font-extrabold mt-1">{cand.vaga_titulo}</h3>
-                          <p className="text-xs theme-text-secondary">
-                            {cand.vaga_empresa} • {cand.vaga_tipo} ({cand.vaga_modalidade})
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleCancelarCandidatura(cand.id)}
-                          title="Cancelar candidatura"
-                          className="p-2 rounded-lg border border-[var(--border-subtle)] hover:bg-red-500/10 hover:text-red-500 transition cursor-pointer"
-                        >
-                          <Icon name="trash" className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {cand.mensagem && (
-                        <p className="text-xs theme-text-secondary italic border-l-2 border-[var(--border-subtle)] pl-2.5">
-                          "{cand.mensagem}"
-                        </p>
-                      )}
-
-                      <span className="text-[11px] theme-text-secondary">
-                        Enviada em {cand.criado_em}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* Vagas Salvas / Favoritas */}
-            <section className="theme-surface border rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-extrabold flex items-center gap-2">
-                  <Icon name="bookmark" className="w-5 h-5 text-amber-500" />
-                  Vagas Salvas ({vagasSalvas.length})
-                </h2>
-              </div>
-
-              {vagasSalvas.length === 0 ? (
-                <div className="theme-muted border rounded-xl p-6 text-center space-y-2">
-                  <p className="text-sm font-semibold">Nenhuma vaga favoritada.</p>
-                  <p className="text-xs theme-text-secondary">
-                    Clique no ícone de marcador nas vagas do mural NESP para guardá-las aqui.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {vagasSalvas.map((vaga) => (
-                    <div
-                      key={vaga.id}
-                      className="theme-muted border rounded-xl p-4 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-extrabold truncate">{vaga.titulo}</h3>
-                        <p className="text-xs theme-text-secondary truncate">
-                          {vaga.empresa} • {vaga.bolsa_ou_salario}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('vagas-noticias')}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold theme-btn-primary cursor-pointer"
-                        >
-                          Abrir
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onToggleSalvarVaga(vaga.id)}
-                          title="Remover dos salvos"
-                          className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:text-red-500 cursor-pointer"
-                        >
-                          <Icon name="close" className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            </form>
+          </section>
         </div>
       )}
 
@@ -646,7 +725,7 @@ export default function UserProfilePage({
       )}
 
       {/* ==========================================
-          ABA 2: EDITAR NOME, EMAIL, MATRÍCULA E PERFIL
+          ABA DADOS CADASTRAIS: EDITAR NOME, EMAIL, MATRÍCULA E PERFIL
           ========================================== */}
       {secaoAtiva === 'dados' && (
         <section className="theme-surface border rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
@@ -664,7 +743,7 @@ export default function UserProfilePage({
           <form onSubmit={handleSalvarPerfil} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-bold block mb-1">Nome Completo / Exibição *</label>
+                <label className="text-xs font-bold block mb-1">Nome Completo</label>
                 <input
                   required
                   minLength={2}
@@ -675,7 +754,7 @@ export default function UserProfilePage({
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">E-mail de Login *</label>
+                <label className="text-xs font-bold block mb-1">E-mail</label>
                 <input
                   type="email"
                   required
@@ -686,17 +765,28 @@ export default function UserProfilePage({
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">Matrícula *</label>
+                <label className="text-xs font-bold block mb-1">Matrícula</label>
                 <input
+                  type="number"
+                  min={0}
+                  max={999999}
+                  step={1}
+                  inputMode="numeric"
                   required
-                  value={form.matricula}
-                  onChange={(e) => setForm((p) => ({ ...p, matricula: e.target.value }))}
-                  className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm uppercase"
+                  value={form.matricula ?? ''}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      matricula: e.target.value.replace(/\D/g, '').slice(0, 6),
+                    }))
+                  }
+                  placeholder="Ex: 2048"
+                  className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm font-mono"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">Curso *</label>
+                <label className="text-xs font-bold block mb-1">Curso</label>
                 <select
                   value={form.curso}
                   onChange={(e) => setForm((p) => ({ ...p, curso: e.target.value }))}
@@ -711,11 +801,11 @@ export default function UserProfilePage({
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">Período Atual *</label>
+                <label className="text-xs font-bold block mb-1">Período</label>
                 <input
                   type="number"
                   min={1}
-                  max={10}
+                  max={12}
                   required
                   value={form.periodo}
                   onChange={(e) => setForm((p) => ({ ...p, periodo: e.target.value }))}
@@ -724,7 +814,7 @@ export default function UserProfilePage({
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">Telefone / WhatsApp</label>
+                <label className="text-xs font-bold block mb-1">Telefone</label>
                 <input
                   value={form.telefone}
                   onChange={(e) => setForm((p) => ({ ...p, telefone: e.target.value }))}
@@ -754,15 +844,50 @@ export default function UserProfilePage({
               </div>
 
               <div>
-                <label className="text-xs font-bold block mb-1">Horas Complementares</label>
+                <label className="text-xs font-bold block mb-1">CRS</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min={0}
+                  max={100}
+                  value={form.crs}
+                  onChange={(e) => setForm((p) => ({ ...p, crs: e.target.value }))}
+                  className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Horas de AC Validadas (h)</label>
                 <input
                   type="number"
                   min={0}
-                  max={300}
-                  value={form.horas_complementares}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, horas_complementares: e.target.value }))
-                  }
+                  max={1000}
+                  value={form.horas_ac}
+                  onChange={(e) => setForm((p) => ({ ...p, horas_ac: e.target.value }))}
+                  className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Horas de CP Validadas (h)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={form.horas_cp}
+                  onChange={(e) => setForm((p) => ({ ...p, horas_cp: e.target.value }))}
+                  className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Horas de Trilha Validadas (h)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={form.horas_trilha}
+                  onChange={(e) => setForm((p) => ({ ...p, horas_trilha: e.target.value }))}
                   className="w-full theme-muted border rounded-xl px-3.5 py-2.5 text-sm"
                 />
               </div>
@@ -779,7 +904,7 @@ export default function UserProfilePage({
               </div>
 
               <div className="sm:col-span-2 lg:col-span-3">
-                <label className="text-xs font-bold block mb-1">Sobre mim / Bio Profissional</label>
+                <label className="text-xs font-bold block mb-1">Sobre mim</label>
                 <textarea
                   rows={3}
                   value={form.bio}
@@ -788,17 +913,6 @@ export default function UserProfilePage({
                 />
               </div>
             </div>
-
-            <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.disponivel_estagio}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, disponivel_estagio: e.target.checked }))
-                }
-              />
-              <span>Deixar meu currículo visível para empresas parceiras do NESP Inatel</span>
-            </label>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -815,7 +929,7 @@ export default function UserProfilePage({
       )}
 
       {/* ==========================================
-          ABA 3: SEGURANÇA & ALTERAÇÃO DE SENHA
+          ABA SEGURANÇA: ALTERAÇÃO DE SENHA
           ========================================== */}
       {secaoAtiva === 'seguranca' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -927,7 +1041,7 @@ export default function UserProfilePage({
               </p>
               <p className="flex justify-between">
                 <span className="theme-text-secondary">Login por matrícula:</span>
-                <strong>{usuario?.matricula}</strong>
+                <strong>{usuario?.matricula ?? ''}</strong>
               </p>
               {usuario?.atualizado_em && (
                 <p className="flex justify-between">

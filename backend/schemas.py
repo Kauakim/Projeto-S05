@@ -1,9 +1,26 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _validar_matricula_inteira(valor: object) -> int:
+    if isinstance(valor, bool):
+        raise ValueError("A matrícula deve ser um número inteiro entre 0 e 999999.")
+    if isinstance(valor, int):
+        num = valor
+    elif isinstance(valor, str):
+        limpo = valor.strip()
+        if not limpo or not limpo.lstrip("-").isdigit():
+            raise ValueError("A matrícula deve ser um número inteiro entre 0 e 999999.")
+        num = int(limpo)
+    else:
+        raise ValueError("A matrícula deve ser um número inteiro entre 0 e 999999.")
+    if num < 0 or num > 999999:
+        raise ValueError("A matrícula deve estar entre 0 e 999999.")
+    return num
 
 
 class UsuarioBase(BaseModel):
     nome: str = Field(..., min_length=2, max_length=120)
-    matricula: str = Field(..., min_length=2, max_length=30)
+    matricula: int = Field(..., ge=0, le=999999)
     curso: str = Field(..., min_length=2, max_length=120)
     periodo: int = Field(..., ge=1, le=12)
     email: str = Field(..., min_length=5, max_length=150)
@@ -12,15 +29,26 @@ class UsuarioBase(BaseModel):
     github: str = ""
     linkedin: str = ""
     areas_interesse: str = ""
-    ira: float = Field(default=84.5, ge=0, le=100)
+    crs: float = Field(default=84.5, ge=0, le=100)
     horas_complementares: int = Field(default=0, ge=0)
     meta_horas: int = Field(default=160, ge=1)
+    horas_ac: int = Field(default=0, ge=0)
+    meta_ac: int = Field(default=160, ge=1)
+    horas_cp: int = Field(default=0, ge=0)
+    meta_cp: int = Field(default=40, ge=1)
+    horas_trilha: int = Field(default=0, ge=0)
+    meta_trilha: int = Field(default=120, ge=1)
     disponivel_estagio: bool = True
+
+    @field_validator("matricula", mode="before")
+    @classmethod
+    def validar_matricula(cls, valor: object) -> int:
+        return _validar_matricula_inteira(valor)
 
 
 class UsuarioUpdate(BaseModel):
     nome: str | None = Field(default=None, min_length=2, max_length=120)
-    matricula: str | None = Field(default=None, min_length=2, max_length=30)
+    matricula: int | None = Field(default=None, ge=0, le=999999)
     curso: str | None = Field(default=None, min_length=2, max_length=120)
     periodo: int | None = Field(default=None, ge=1, le=12)
     email: str | None = Field(default=None, min_length=5, max_length=150)
@@ -29,8 +57,23 @@ class UsuarioUpdate(BaseModel):
     github: str | None = None
     linkedin: str | None = None
     areas_interesse: str | None = None
+    crs: float | None = Field(default=None, ge=0, le=100)
     horas_complementares: int | None = Field(default=None, ge=0)
+    meta_horas: int | None = Field(default=None, ge=1)
+    horas_ac: int | None = Field(default=None, ge=0)
+    meta_ac: int | None = Field(default=None, ge=1)
+    horas_cp: int | None = Field(default=None, ge=0)
+    meta_cp: int | None = Field(default=None, ge=1)
+    horas_trilha: int | None = Field(default=None, ge=0)
+    meta_trilha: int | None = Field(default=None, ge=1)
     disponivel_estagio: bool | None = None
+
+    @field_validator("matricula", mode="before")
+    @classmethod
+    def validar_matricula_opcional(cls, valor: object) -> int | None:
+        if valor is None:
+            return None
+        return _validar_matricula_inteira(valor)
 
 
 class UsuarioOut(UsuarioBase):
@@ -43,21 +86,26 @@ class UsuarioOut(UsuarioBase):
 class LoginRequest(BaseModel):
     identificador: str = Field(
         ...,
-        min_length=2,
+        min_length=1,
         max_length=150,
-        description="E-mail institucional ou Matrícula do aluno",
+        description="E-mail ou Matrícula do aluno",
     )
     senha: str = Field(..., min_length=1, max_length=128)
 
 
 class RegistroRequest(BaseModel):
     nome: str = Field(..., min_length=2, max_length=120)
-    matricula: str = Field(..., min_length=2, max_length=30)
+    matricula: int = Field(..., ge=0, le=999999)
     curso: str = Field(default="Engenharia de Software", min_length=2, max_length=120)
     periodo: int = Field(default=1, ge=1, le=12)
     email: str = Field(..., min_length=5, max_length=150)
     telefone: str = ""
     senha: str = Field(..., min_length=6, max_length=128)
+
+    @field_validator("matricula", mode="before")
+    @classmethod
+    def validar_matricula_registro(cls, valor: object) -> int:
+        return _validar_matricula_inteira(valor)
 
 
 class AlterarSenhaRequest(BaseModel):
@@ -72,9 +120,53 @@ class AuthResponse(BaseModel):
     usuario: UsuarioOut
 
 
+class AvaliacaoAulaItem(BaseModel):
+    id: str = ""
+    titulo: str = Field(..., min_length=1, max_length=100)
+    tipo: str = Field(default="Prova", max_length=40)
+    data: str = Field(default="", max_length=30)
+    realizada: bool = False
+    nota: float | None = Field(default=None, ge=0, le=100)
+    peso: float = Field(default=1.0, gt=0, le=100)
+
+
+class AulaCreate(BaseModel):
+    codigo: str = Field(..., min_length=1, max_length=20)
+    turma: str = Field(default="A", min_length=1, max_length=30)
+    disciplina: str = Field(..., min_length=2, max_length=160)
+    professor: str = Field(..., min_length=2, max_length=120)
+    dia: str = Field(..., min_length=3, max_length=10)
+    horario: str = Field(..., min_length=3, max_length=30)
+    local: str = Field(..., min_length=1, max_length=50)
+    prova_alert: bool = False
+    prova_data: str = ""
+    frequencia: str = "00/25"
+    nota: float = Field(default=0.0, ge=0, le=100)
+    calcular_nota_automatica: bool = False
+    avaliacoes: list[AvaliacaoAulaItem] = []
+
+
+class AulaUpdate(BaseModel):
+    codigo: str | None = Field(default=None, min_length=1, max_length=20)
+    turma: str | None = Field(default=None, min_length=1, max_length=30)
+    disciplina: str | None = Field(default=None, min_length=2, max_length=160)
+    professor: str | None = Field(default=None, min_length=2, max_length=120)
+    dia: str | None = Field(default=None, min_length=3, max_length=10)
+    horario: str | None = Field(default=None, min_length=3, max_length=30)
+    local: str | None = Field(default=None, min_length=1, max_length=50)
+    prova_alert: bool | None = None
+    prova_data: str | None = None
+    frequencia: str | None = None
+    nota: float | None = Field(default=None, ge=0, le=100)
+    calcular_nota_automatica: bool = False
+    avaliacoes: list[AvaliacaoAulaItem] | None = None
+
+
 class AulaOut(BaseModel):
     id: int
+    usuario_id: int | None = None
     codigo: str
+    turma: str = "A"
     disciplina: str
     professor: str
     dia: str
@@ -84,6 +176,7 @@ class AulaOut(BaseModel):
     prova_data: str | None = ""
     frequencia: str
     nota: float
+    avaliacoes: list[AvaliacaoAulaItem] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -97,63 +190,6 @@ class EventoOut(BaseModel):
     tipo: str
     descricao: str
     imagem_url: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class VagaCreate(BaseModel):
-    titulo: str = Field(..., min_length=3, max_length=160)
-    empresa: str = Field(..., min_length=2, max_length=120)
-    tipo: str = Field(..., min_length=2, max_length=50)
-    modalidade: str = Field(..., min_length=2, max_length=40)
-    localizacao: str = Field(..., min_length=2, max_length=120)
-    bolsa_ou_salario: str = Field(..., min_length=2, max_length=80)
-    area: str = Field(..., min_length=2, max_length=80)
-    requisitos: str = Field(..., min_length=2, max_length=300)
-    descricao: str = Field(..., min_length=10)
-    prazo: str = Field(..., min_length=4, max_length=30)
-    contato_email: str = "nesp@inatel.br"
-
-
-class VagaOut(BaseModel):
-    id: int
-    titulo: str
-    empresa: str
-    tipo: str
-    modalidade: str
-    localizacao: str
-    bolsa_ou_salario: str
-    area: str
-    requisitos: str
-    descricao: str
-    prazo: str
-    contato_email: str | None = None
-    ativa: bool
-    criado_em: str
-    candidatado: bool = False
-    total_candidaturas: int = 0
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CandidaturaCreate(BaseModel):
-    mensagem: str = ""
-    link_portfolio: str = ""
-
-
-class CandidaturaOut(BaseModel):
-    id: int
-    vaga_id: int
-    usuario_id: int
-    mensagem: str | None = ""
-    link_portfolio: str | None = ""
-    status: str
-    criado_em: str
-    vaga_titulo: str = ""
-    vaga_empresa: str = ""
-    vaga_tipo: str = ""
-    vaga_modalidade: str = ""
-    vaga_bolsa: str = ""
 
     model_config = ConfigDict(from_attributes=True)
 

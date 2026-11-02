@@ -15,9 +15,8 @@ const CURSOS_INATEL = [
 ];
 
 const THEMES = [
-  { id: 'inatel', label: 'Inatel', dot: 'bg-[#126ae2]' },
-  { id: 'limao', label: 'Limão', dot: 'bg-[#9ACD32]' },
-  { id: 'dark', label: 'Dark', dot: 'bg-sky-400' },
+  { id: 'inatel', label: 'Tema Claro', icon: 'sun' },
+  { id: 'dark', label: 'Tema Escuro', icon: 'moon' },
 ];
 
 export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
@@ -70,6 +69,12 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
   const handleSubmitRegistro = async (e) => {
     e.preventDefault();
     setErro('');
+    const matTexto = String(regForm.matricula ?? '').trim();
+    const matNumero = Number(matTexto);
+    if (!/^\d+$/.test(matTexto) || !Number.isInteger(matNumero) || matNumero < 0 || matNumero > 999999) {
+      setErro('A matrícula deve ser um número inteiro entre 0 e 999999.');
+      return;
+    }
     if (regForm.senha !== regForm.confirmarSenha) {
       setErro('As senhas informadas não conferem.');
       return;
@@ -78,7 +83,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
     try {
       const res = await api.registro({
         nome: regForm.nome,
-        matricula: regForm.matricula,
+        matricula: matNumero,
         curso: regForm.curso,
         periodo: Number(regForm.periodo),
         email: regForm.email,
@@ -121,8 +126,8 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
           </h1>
 
           <p className="text-sm sm:text-base text-sky-100/90 leading-relaxed">
-            Acesse sua grade horária, acompanhe notas e provas, emita sua carteirinha estudantil
-            digital e candidate-se às vagas exclusivas do NESP Inatel.
+            Acesse sua grade horária, acompanhe notas e provas, valide suas horas de AC, CP e Trilha
+            e busque vagas no LinkedIn alinhadas à sua área.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3 pt-2">
@@ -141,8 +146,8 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
                 <Icon name="folder" className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-xs font-bold">Mural NESP &amp; Notícias</p>
-                <p className="text-[11px] text-white/75">Estágios, IC, vagas júnior e comunicados</p>
+                <p className="text-xs font-bold">Vagas LinkedIn &amp; Notícias Inatel</p>
+                <p className="text-[11px] text-white/75">Oportunidades externas e notícias oficiais</p>
               </div>
             </div>
 
@@ -167,21 +172,21 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
           PAINEL DE AUTENTICAÇÃO (DIREITA)
           ========================================== */}
       <div className="flex-1 flex flex-col justify-between p-6 sm:p-10 lg:p-14">
-        {/* Topo: Seletor de Temas */}
+        {/* Topo: Seletor de Temas (Sol / Lua) */}
         <div className="flex items-center justify-end gap-2">
-          <span className="text-xs font-semibold theme-text-secondary">Tema:</span>
           <div className="flex items-center theme-surface border p-1 rounded-xl">
             {THEMES.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => onChangeTheme(t.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                title={t.label}
+                aria-label={t.label}
+                className={`p-1.5 rounded-lg transition cursor-pointer flex items-center justify-center ${
                   theme === t.id ? 'theme-btn-primary' : 'theme-text-secondary hover:opacity-80'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                {t.label}
+                <Icon name={t.icon} className="w-4 h-4" />
               </button>
             ))}
           </div>
@@ -196,7 +201,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
             <p className="text-sm theme-text-secondary">
               {modo === 'login'
                 ? 'Entre com seu e-mail institucional ou número de matrícula.'
-                : 'Cadastre seus dados para acessar o painel e o sistema do NESP.'}
+                : 'Cadastre seus dados para acessar o portal acadêmico do Inatel.'}
             </p>
           </div>
 
@@ -248,7 +253,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
             <form onSubmit={handleSubmitLogin} className="theme-surface border rounded-2xl p-6 shadow-sm space-y-4">
               <div>
                 <label className="text-xs font-bold block mb-1.5">
-                  E-mail Institucional ou Matrícula
+                  E-mail ou Matrícula
                 </label>
                 <div className="relative">
                   <input
@@ -258,7 +263,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
                     onChange={(e) =>
                       setLoginForm((p) => ({ ...p, identificador: e.target.value }))
                     }
-                    placeholder="kaua@ges.inatel.br ou GES-2048"
+                    placeholder="kaua@ges.inatel.br ou 2048"
                     className="w-full theme-muted border rounded-xl pl-3.5 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 theme-text-secondary">
@@ -301,7 +306,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
               <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs">
                 <div className="theme-text-secondary">
                   <span className="font-bold block">Conta padrão de teste:</span>
-                  <span>GES-2048 • Senha inicial: 123456</span>
+                  <span>Matrícula 2048 • Senha inicial: 123456</span>
                 </div>
                 <button
                   type="button"
@@ -330,14 +335,23 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold block mb-1">Matrícula *</label>
+                  <label className="text-xs font-bold block mb-1">Matrícula</label>
                   <input
-                    type="text"
+                    type="number"
+                    min={0}
+                    max={999999}
+                    step={1}
+                    inputMode="numeric"
                     required
                     value={regForm.matricula}
-                    onChange={(e) => setRegForm((p) => ({ ...p, matricula: e.target.value }))}
-                    placeholder="Ex: GEC-2105"
-                    className="w-full theme-muted border rounded-xl px-3.5 py-2 text-sm uppercase"
+                    onChange={(e) =>
+                      setRegForm((p) => ({
+                        ...p,
+                        matricula: e.target.value.replace(/\D/g, '').slice(0, 6),
+                      }))
+                    }
+                    placeholder="Ex: 2048"
+                    className="w-full theme-muted border rounded-xl px-3.5 py-2 text-sm font-mono"
                   />
                 </div>
 

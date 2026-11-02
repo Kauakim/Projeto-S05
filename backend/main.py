@@ -5,7 +5,6 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 import database
 from auth import (
@@ -21,22 +20,21 @@ from news_service import chave_ordenacao_noticia, sincronizar_noticias_no_banco
 from models import (
     AnaliseLinkedIn,
     Aula,
-    Candidatura,
     Evento,
     Noticia,
     Usuario,
-    Vaga,
     VagaLinkedInCache,
 )
 from schemas import (
     AlterarSenhaRequest,
     AnalisarPerfilLinkedInRequest,
     AnaliseLinkedInOut,
+    AulaCreate,
     AulaOut,
+    AulaUpdate,
     AuthResponse,
+    AvaliacaoAulaItem,
     BuscarVagasLinkedInRequest,
-    CandidaturaCreate,
-    CandidaturaOut,
     EventoOut,
     LoginRequest,
     NoticiaCreate,
@@ -45,9 +43,7 @@ from schemas import (
     SincronizarNoticiasOut,
     UsuarioOut,
     UsuarioUpdate,
-    VagaCreate,
     VagaLinkedInOut,
-    VagaOut,
 )
 from seed import seed_initial_data
 
@@ -64,8 +60,8 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Inatel Portal Acadêmico API",
-    description="Backend FastAPI + PostgreSQL com Autenticação JWT, Painel do Aluno, Perfil, Vagas (NESP) e Notícias.",
-    version="2.1.0",
+    description="Backend FastAPI + PostgreSQL com Autenticação JWT, Painel Acadêmico, Vagas LinkedIn, Notícias do Inatel e Minha Conta.",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -99,13 +95,14 @@ async def fazer_login(
     credenciais: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    ident = credenciais.identificador.strip().lower()
-    stmt = select(Usuario).where(
-        or_(
-            func.lower(Usuario.email) == ident,
-            func.lower(Usuario.matricula) == ident,
-        )
-    )
+    ident_raw = credenciais.identificador.strip()
+    ident_lower = ident_raw.lower()
+    condicoes = [func.lower(Usuario.email) == ident_lower]
+    if ident_raw.isdigit():
+        mat_num = int(ident_raw)
+        if 0 <= mat_num <= 999999:
+            condicoes.append(Usuario.matricula == mat_num)
+    stmt = select(Usuario).where(or_(*condicoes))
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
@@ -129,7 +126,7 @@ async def registrar_usuario(
     db: AsyncSession = Depends(get_db),
 ):
     email_limpo = dados.email.strip().lower()
-    matricula_limpa = dados.matricula.strip().upper()
+    matricula_int = int(dados.matricula)
 
     res_email = await db.execute(
         select(Usuario).where(func.lower(Usuario.email) == email_limpo)
@@ -141,7 +138,7 @@ async def registrar_usuario(
         )
 
     res_mat = await db.execute(
-        select(Usuario).where(func.lower(Usuario.matricula) == matricula_limpa.lower())
+        select(Usuario).where(Usuario.matricula == matricula_int)
     )
     if res_mat.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -151,7 +148,7 @@ async def registrar_usuario(
 
     novo_usuario = Usuario(
         nome=dados.nome.strip(),
-        matricula=matricula_limpa,
+        matricula=matricula_int,
         curso=dados.curso.strip(),
         periodo=dados.periodo,
         email=email_limpo,
@@ -159,9 +156,15 @@ async def registrar_usuario(
         senha_hash=hash_password(dados.senha),
         bio=f"Estudante de {dados.curso.strip()} ({dados.periodo}º período) no Inatel.",
         areas_interesse="Tecnologia, Engenharia, Inovação",
-        ira=80.0,
+        crs=80.0,
         horas_complementares=0,
         meta_horas=160,
+        horas_ac=0,
+        meta_ac=160,
+        horas_cp=0,
+        meta_cp=40,
+        horas_trilha=0,
+        meta_trilha=120,
         disponivel_estagio=True,
         atualizado_em=datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M"),
     )
@@ -216,11 +219,11 @@ async def atualizar_usuario(
 
     # Verifica unicidade se matrícula for alterada
     if "matricula" in update_fields and update_fields["matricula"] is not None:
-        nova_mat = update_fields["matricula"].strip().upper()
-        if nova_mat.lower() != current_user.matricula.lower():
+        nova_mat = int(update_fields["matricula"])
+        if nova_mat != current_user.matricula:
             dup_m = await db.execute(
                 select(Usuario).where(
-                    func.lower(Usuario.matricula) == nova_mat.lower(),
+                    Usuario.matricula == nova_mat,
                     Usuario.id != current_user.id,
                 )
             )
@@ -234,8 +237,23 @@ async def atualizar_usuario(
     if "nome" in update_fields and update_fields["nome"] is not None:
         update_fields["nome"] = update_fields["nome"].strip()
 
+    # Mantém compatibilidade bidirecional entre horas_ac/meta_ac e horas_complementares/meta_horas
+    if "horas_ac" in update_fields and update_fields["horas_ac"] is not None:
+        update_fields["horas_complementares"] = update_fields["horas_ac"]
+    elif (
+        "horas_complementares" in update_fields
+        and update_fields["horas_complementares"] is not None
+    ):
+        update_fields["horas_ac"] = update_fields["horas_complementares"]
+
+    if "meta_ac" in update_fields and update_fields["meta_ac"] is not None:
+        update_fields["meta_horas"] = update_fields["meta_ac"]
+    elif "meta_horas" in update_fields and update_fields["meta_horas"] is not None:
+        update_fields["meta_ac"] = update_fields["meta_horas"]
+
     for campo, valor in update_fields.items():
-        setattr(current_user, campo, valor)
+        if valor is not None:
+            setattr(current_user, campo, valor)
 
     current_user.atualizado_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
     await db.commit()
@@ -274,18 +292,245 @@ async def alterar_senha_usuario(
 
 
 # ==========================================
-# AULAS E EVENTOS (PAINEL PRINCIPAL)
+# AULAS, TURMAS, PROVAS, NOTAS E HORAS (AC, CP, TRILHA)
 # ==========================================
+ORDEM_DIAS_SEMANA = {"seg": 1, "ter": 2, "qua": 3, "qui": 4, "sex": 5, "sab": 6}
+
+
+def _normalizar_nota_0_a_10(valor: float | None) -> float | None:
+    if valor is None:
+        return None
+    v = float(valor)
+    if v > 10.0:
+        v = v / 10.0
+    return round(max(0.0, min(10.0, v)), 1)
+
+
+def _carregar_avaliacoes_aula(aula: Aula) -> list[AvaliacaoAulaItem]:
+    try:
+        raw = json.loads(aula.avaliacoes_json or "[]")
+        if not isinstance(raw, list):
+            return []
+        saida: list[AvaliacaoAulaItem] = []
+        for idx, item in enumerate(raw):
+            if not isinstance(item, dict):
+                continue
+            nota_val = item.get("nota")
+            saida.append(
+                AvaliacaoAulaItem(
+                    id=str(item.get("id") or f"av-{aula.id}-{idx + 1}"),
+                    titulo=str(item.get("titulo") or f"Avaliação {idx + 1}"),
+                    tipo=str(item.get("tipo") or "Prova"),
+                    data=str(item.get("data") or ""),
+                    realizada=bool(item.get("realizada", False)),
+                    nota=_normalizar_nota_0_a_10(nota_val) if nota_val is not None else None,
+                    peso=float(item.get("peso") or 1.0),
+                )
+            )
+        return saida
+    except Exception:
+        return []
+
+
+def _serializar_aula(aula: Aula) -> AulaOut:
+    return AulaOut(
+        id=aula.id,
+        usuario_id=aula.usuario_id,
+        codigo=aula.codigo,
+        turma=aula.turma or "A",
+        disciplina=aula.disciplina,
+        professor=aula.professor,
+        dia=aula.dia,
+        horario=aula.horario,
+        local=aula.local,
+        prova_alert=bool(aula.prova_alert),
+        prova_data=aula.prova_data or "",
+        frequencia=aula.frequencia or "00/25",
+        nota=round(float(aula.nota or 0.0), 1),
+        avaliacoes=_carregar_avaliacoes_aula(aula),
+    )
+
+
+def _preparar_avaliacoes_e_media(
+    avaliacoes: list[AvaliacaoAulaItem],
+    nota_manual: float | None,
+    calcular_automatica: bool,
+    prova_data_atual: str,
+) -> tuple[str, float, str]:
+    serializadas: list[dict] = []
+    soma_ponderada = 0.0
+    soma_pesos = 0.0
+    proxima_data_pendente = ""
+
+    for idx, av in enumerate(avaliacoes):
+        nota_norm = _normalizar_nota_0_a_10(av.nota) if av.nota is not None else None
+        peso_norm = float(av.peso or 1.0)
+        realizada_flag = bool(av.realizada)
+        if realizada_flag and nota_norm is not None:
+            soma_ponderada += nota_norm * peso_norm
+            soma_pesos += peso_norm
+        elif not realizada_flag and av.data.strip() and not proxima_data_pendente:
+            proxima_data_pendente = av.data.strip()
+
+        serializadas.append(
+            {
+                "id": av.id.strip() or f"av-{idx + 1}",
+                "titulo": av.titulo.strip(),
+                "tipo": (av.tipo or "Prova").strip() or "Prova",
+                "data": (av.data or "").strip(),
+                "realizada": realizada_flag,
+                "nota": nota_norm,
+                "peso": peso_norm,
+            }
+        )
+
+    nota_final = _normalizar_nota_0_a_10(nota_manual) if nota_manual is not None else 0.0
+    if calcular_automatica and soma_pesos > 0:
+        nota_final = round(soma_ponderada / soma_pesos, 1)
+
+    prova_data_final = (prova_data_atual or "").strip() or proxima_data_pendente
+    return json.dumps(serializadas, ensure_ascii=False), float(nota_final or 0.0), prova_data_final
+
+
 @app.get("/api/aulas", response_model=list[AulaOut])
 async def listar_aulas(
-    dia: str | None = Query(default=None, description="Filtra por dia: seg, ter, qua, qui, sex"),
+    dia: str | None = Query(default=None, description="Filtra por dia: seg, ter, qua, qui, sex, sab"),
+    current_user: Usuario | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Aula).order_by(Aula.id.asc())
-    if dia:
+    stmt = select(Aula)
+    if current_user is not None:
+        stmt = stmt.where(Aula.usuario_id == current_user.id)
+    if dia and dia.lower().strip() != "todas":
         stmt = stmt.where(Aula.dia == dia.lower().strip())
+
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    lista = list(res.scalars().all())
+    lista.sort(
+        key=lambda a: (
+            ORDEM_DIAS_SEMANA.get((a.dia or "").lower(), 99),
+            a.horario or "",
+            a.id,
+        )
+    )
+    return [_serializar_aula(a) for a in lista]
+
+
+@app.post("/api/aulas", response_model=AulaOut, status_code=status.HTTP_201_CREATED)
+async def criar_aula(
+    dados: AulaCreate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    dia_norm = dados.dia.lower().strip()
+    if dia_norm not in ORDEM_DIAS_SEMANA:
+        raise HTTPException(
+            status_code=400,
+            detail="Dia inválido. Use seg, ter, qua, qui, sex ou sab.",
+        )
+
+    av_json, nota_calc, prova_dt = _preparar_avaliacoes_e_media(
+        avaliacoes=dados.avaliacoes,
+        nota_manual=dados.nota,
+        calcular_automatica=dados.calcular_nota_automatica,
+        prova_data_atual=dados.prova_data,
+    )
+
+    nova_aula = Aula(
+        usuario_id=current_user.id,
+        codigo=dados.codigo.strip().upper(),
+        turma=dados.turma.strip().upper() or "A",
+        disciplina=dados.disciplina.strip(),
+        professor=dados.professor.strip(),
+        dia=dia_norm,
+        horario=dados.horario.strip(),
+        local=dados.local.strip(),
+        prova_alert=dados.prova_alert,
+        prova_data=prova_dt,
+        frequencia=dados.frequencia.strip() or "00/25",
+        nota=nota_calc,
+        avaliacoes_json=av_json,
+    )
+    db.add(nova_aula)
+    await db.commit()
+    await db.refresh(nova_aula)
+    return _serializar_aula(nova_aula)
+
+
+@app.put("/api/aulas/{aula_id}", response_model=AulaOut)
+async def atualizar_aula(
+    aula_id: int,
+    dados: AulaUpdate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Aula).where(Aula.id == aula_id, Aula.usuario_id == current_user.id)
+    )
+    aula = res.scalar_one_or_none()
+    if aula is None:
+        raise HTTPException(status_code=404, detail="Disciplina/turma não encontrada.")
+
+    if dados.codigo is not None:
+        aula.codigo = dados.codigo.strip().upper()
+    if dados.turma is not None:
+        aula.turma = dados.turma.strip().upper() or "A"
+    if dados.disciplina is not None:
+        aula.disciplina = dados.disciplina.strip()
+    if dados.professor is not None:
+        aula.professor = dados.professor.strip()
+    if dados.dia is not None:
+        dia_norm = dados.dia.lower().strip()
+        if dia_norm not in ORDEM_DIAS_SEMANA:
+            raise HTTPException(
+                status_code=400,
+                detail="Dia inválido. Use seg, ter, qua, qui, sex ou sab.",
+            )
+        aula.dia = dia_norm
+    if dados.horario is not None:
+        aula.horario = dados.horario.strip()
+    if dados.local is not None:
+        aula.local = dados.local.strip()
+    if dados.prova_alert is not None:
+        aula.prova_alert = dados.prova_alert
+    if dados.frequencia is not None:
+        aula.frequencia = dados.frequencia.strip() or "00/25"
+
+    avaliacoes_atuais = (
+        dados.avaliacoes if dados.avaliacoes is not None else _carregar_avaliacoes_aula(aula)
+    )
+    nota_base = dados.nota if dados.nota is not None else aula.nota
+    prova_dt_base = dados.prova_data if dados.prova_data is not None else (aula.prova_data or "")
+
+    av_json, nota_calc, prova_dt_final = _preparar_avaliacoes_e_media(
+        avaliacoes=avaliacoes_atuais,
+        nota_manual=nota_base,
+        calcular_automatica=dados.calcular_nota_automatica,
+        prova_data_atual=prova_dt_base,
+    )
+    aula.avaliacoes_json = av_json
+    aula.nota = nota_calc
+    aula.prova_data = prova_dt_final
+
+    await db.commit()
+    await db.refresh(aula)
+    return _serializar_aula(aula)
+
+
+@app.delete("/api/aulas/{aula_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remover_aula(
+    aula_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Aula).where(Aula.id == aula_id, Aula.usuario_id == current_user.id)
+    )
+    aula = res.scalar_one_or_none()
+    if aula is None:
+        raise HTTPException(status_code=404, detail="Disciplina/turma não encontrada.")
+    await db.delete(aula)
+    await db.commit()
 
 
 @app.get("/api/eventos", response_model=list[EventoOut])
@@ -295,206 +540,21 @@ async def listar_eventos(db: AsyncSession = Depends(get_db)):
 
 
 # ==========================================
-# SISTEMA DE VAGAS & CANDIDATURAS (NESP)
-# ==========================================
-@app.get("/api/vagas", response_model=list[VagaOut])
-async def listar_vagas(
-    busca: str | None = Query(default=None),
-    tipo: str | None = Query(default=None),
-    modalidade: str | None = Query(default=None),
-    current_user: Usuario | None = Depends(get_optional_user),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = (
-        select(Vaga)
-        .options(selectinload(Vaga.candidaturas))
-        .where(Vaga.ativa.is_(True))
-        .order_by(desc(Vaga.id))
-    )
-
-    if tipo and tipo.lower() != "todas":
-        stmt = stmt.where(func.lower(Vaga.tipo) == tipo.lower().strip())
-
-    if modalidade and modalidade.lower() != "todas":
-        stmt = stmt.where(func.lower(Vaga.modalidade) == modalidade.lower().strip())
-
-    if busca and busca.strip():
-        termo = f"%{busca.strip().lower()}%"
-        stmt = stmt.where(
-            or_(
-                func.lower(Vaga.titulo).like(termo),
-                func.lower(Vaga.empresa).like(termo),
-                func.lower(Vaga.requisitos).like(termo),
-                func.lower(Vaga.area).like(termo),
-                func.lower(Vaga.descricao).like(termo),
-            )
-        )
-
-    res = await db.execute(stmt)
-    vagas = res.scalars().all()
-
-    saida: list[VagaOut] = []
-    for v in vagas:
-        candidatado = (
-            any(c.usuario_id == current_user.id for c in v.candidaturas)
-            if current_user is not None
-            else False
-        )
-        item = VagaOut.model_validate(v)
-        item.candidatado = candidatado
-        item.total_candidaturas = len(v.candidaturas)
-        saida.append(item)
-    return saida
-
-
-@app.post("/api/vagas", response_model=VagaOut, status_code=status.HTTP_201_CREATED)
-async def criar_vaga(
-    nova_vaga: VagaCreate,
-    _current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    vaga = Vaga(**nova_vaga.model_dump())
-    db.add(vaga)
-    await db.commit()
-    await db.refresh(vaga)
-    item = VagaOut.model_validate(vaga)
-    item.candidatado = False
-    item.total_candidaturas = 0
-    return item
-
-
-@app.delete("/api/vagas/{vaga_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remover_vaga(
-    vaga_id: int,
-    _current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    res = await db.execute(select(Vaga).where(Vaga.id == vaga_id))
-    vaga = res.scalar_one_or_none()
-    if vaga is None:
-        raise HTTPException(status_code=404, detail="Vaga não encontrada.")
-    await db.delete(vaga)
-    await db.commit()
-
-
-@app.post(
-    "/api/vagas/{vaga_id}/candidatar",
-    response_model=CandidaturaOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def candidatar_vaga(
-    vaga_id: int,
-    payload: CandidaturaCreate,
-    current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    res_vaga = await db.execute(select(Vaga).where(Vaga.id == vaga_id))
-    vaga = res_vaga.scalar_one_or_none()
-    if vaga is None:
-        raise HTTPException(status_code=404, detail="Vaga não encontrada.")
-
-    res_dup = await db.execute(
-        select(Candidatura).where(
-            Candidatura.vaga_id == vaga_id,
-            Candidatura.usuario_id == current_user.id,
-        )
-    )
-    if res_dup.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="Você já realizou candidatura para esta vaga.",
-        )
-
-    candidatura = Candidatura(
-        vaga_id=vaga.id,
-        usuario_id=current_user.id,
-        mensagem=payload.mensagem.strip(),
-        link_portfolio=payload.link_portfolio.strip(),
-        status="Em análise pelo NESP",
-    )
-    db.add(candidatura)
-    await db.commit()
-    await db.refresh(candidatura)
-
-    return CandidaturaOut(
-        id=candidatura.id,
-        vaga_id=vaga.id,
-        usuario_id=current_user.id,
-        mensagem=candidatura.mensagem,
-        link_portfolio=candidatura.link_portfolio,
-        status=candidatura.status,
-        criado_em=candidatura.criado_em,
-        vaga_titulo=vaga.titulo,
-        vaga_empresa=vaga.empresa,
-        vaga_tipo=vaga.tipo,
-        vaga_modalidade=vaga.modalidade,
-        vaga_bolsa=vaga.bolsa_ou_salario,
-    )
-
-
-@app.get("/api/candidaturas", response_model=list[CandidaturaOut])
-async def listar_minhas_candidaturas(
-    current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = (
-        select(Candidatura)
-        .options(selectinload(Candidatura.vaga))
-        .where(Candidatura.usuario_id == current_user.id)
-        .order_by(desc(Candidatura.id))
-    )
-    res = await db.execute(stmt)
-    candidaturas = res.scalars().all()
-
-    return [
-        CandidaturaOut(
-            id=c.id,
-            vaga_id=c.vaga_id,
-            usuario_id=c.usuario_id,
-            mensagem=c.mensagem,
-            link_portfolio=c.link_portfolio,
-            status=c.status,
-            criado_em=c.criado_em,
-            vaga_titulo=c.vaga.titulo if c.vaga else "",
-            vaga_empresa=c.vaga.empresa if c.vaga else "",
-            vaga_tipo=c.vaga.tipo if c.vaga else "",
-            vaga_modalidade=c.vaga.modalidade if c.vaga else "",
-            vaga_bolsa=c.vaga.bolsa_ou_salario if c.vaga else "",
-        )
-        for c in candidaturas
-    ]
-
-
-@app.delete("/api/candidaturas/{candidatura_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def cancelar_candidatura(
-    candidatura_id: int,
-    current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    res = await db.execute(
-        select(Candidatura).where(
-            Candidatura.id == candidatura_id,
-            Candidatura.usuario_id == current_user.id,
-        )
-    )
-    cand = res.scalar_one_or_none()
-    if cand is None:
-        raise HTTPException(status_code=404, detail="Candidatura não encontrada.")
-    await db.delete(cand)
-    await db.commit()
-
-
-# ==========================================
-# SISTEMA DE NOTÍCIAS REAIS (INATEL & REGIÃO)
+# SISTEMA DE NOTÍCIAS REAIS (PORTAL INATEL)
 # ==========================================
 @app.get("/api/noticias", response_model=list[NoticiaOut])
 async def listar_noticias(
     busca: str | None = Query(default=None),
     categoria: str | None = Query(default=None),
-    origem: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Noticia)
+    stmt = select(Noticia).where(
+        or_(
+            func.lower(func.coalesce(Noticia.url_original, "")).like("%inatel.br%"),
+            func.lower(func.coalesce(Noticia.fonte_nome, "")).like("%inatel%"),
+            func.lower(func.coalesce(Noticia.autor, "")).like("%inatel%"),
+        )
+    )
 
     if categoria and categoria.lower() != "todas":
         stmt = stmt.where(func.lower(Noticia.categoria) == categoria.lower().strip())
@@ -513,26 +573,6 @@ async def listar_noticias(
 
     res = await db.execute(stmt)
     lista = list(res.scalars().all())
-
-    if origem and origem.lower() != "todas":
-        orig = origem.lower().strip()
-        if orig == "inatel":
-            lista = [
-                n
-                for n in lista
-                if "inatel" in (n.fonte_nome or "").lower()
-                or "inatel" in (n.autor or "").lower()
-                or "inatel" in (n.titulo or "").lower()
-                or "inatel.br" in (n.url_original or "").lower()
-            ]
-        elif orig == "regiao":
-            lista = [
-                n
-                for n in lista
-                if "inatel.br" not in (n.url_original or "").lower()
-                and "portal inatel" not in (n.fonte_nome or "").lower()
-            ]
-
     lista.sort(key=chave_ordenacao_noticia, reverse=True)
     return lista
 

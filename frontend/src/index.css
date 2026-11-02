@@ -3,13 +3,11 @@
 @theme {
   --color-inatel: #003057;
   --color-inatel-blue: #126ae2;
-  --color-limao: #9acd32;
   --font-sans: "Plus Jakarta Sans", "Arimo", system-ui, -apple-system, sans-serif;
 }
 
 /* =========================================================
-   SISTEMA DE TEMAS DINÂMICOS (Inatel / Limão / Dark)
-   Evolução acessível dos 3 temas originais da disciplina S05
+   SISTEMA DE TEMAS DINÂMICOS (Inatel Institucional & Dark)
    ========================================================= */
 :root,
 [data-theme="inatel"] {
@@ -26,22 +24,6 @@
   --brand-primary-hover: #0d56bd;
   --brand-soft: #dbeafe;
   --brand-soft-text: #1e40af;
-}
-
-[data-theme="limao"] {
-  --bg-page: #f4fce3;
-  --bg-surface: #ffffff;
-  --bg-muted: #ecfccb;
-  --bg-header: #38184c;
-  --bg-header-accent: #4e2269;
-  --text-primary: #1e1b4b;
-  --text-secondary: #3f6212;
-  --text-on-header: #f7fee7;
-  --border-subtle: #d9f99d;
-  --brand-primary: #4d7c0f;
-  --brand-primary-hover: #3f6212;
-  --brand-soft: #ecfccb;
-  --brand-soft-text: #365314;
 }
 
 [data-theme="dark"] {
@@ -112,4 +94,89 @@ body {
 
 .theme-accent-text {
   color: var(--brand-primary);
+}
+
+/* =========================================================
+   RODAPÉ OFICIAL INATEL (Identidade Visual inatel.br/home/)
+   --brand-400: #066ce2 | --brand-600: #065dc4 | --brand-800: #033773
+   --brand-950: #00142a | --accent-teal: #40d5d9
+   ========================================================= */
+.inatel-footer-main {
+  background: radial-gradient(circle at 30% -101%, #066ce2 10%, #065dc4 35%, #033773 70%);
+  color: #ffffff;
+}
+
+.inatel-footer-bar {
+  background-color: #00142a;
+  color: #ffffff;
+}
+
+.inatel-footer-link {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  padding-bottom: 5px;
+  color: #ffffff;
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.inatel-footer-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.inatel-footer-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: #ffffff;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s ease;
+}
+
+.inatel-footer-link:hover {
+  color: #40d5d9;
+}
+
+.inatel-footer-link:hover::after {
+  transform: scaleX(1);
+  background: #40d5d9;
+}
+
+.inatel-footer-legal-link {
+  position: relative;
+  color: #ffffff;
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.inatel-footer-legal-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 1px;
+  background: #40d5d9;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s ease;
+}
+
+.inatel-footer-legal-link:hover {
+  color: #40d5d9;
+}
+
+.inatel-footer-legal-link:hover::after {
+  transform: scaleX(1);
 }

@@ -1,22 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import Icon from './components/Icon';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import VagasNoticiasPage from './pages/VagasNoticiasPage';
+import VagasPage from './pages/VagasPage';
+import NoticiasPage from './pages/NoticiasPage';
 import UserProfilePage from './pages/UserProfilePage';
 import { api, getStoredToken, setStoredToken } from './services/api';
 
-const PAGINAS_VALIDAS = ['dashboard', 'vagas-noticias', 'perfil'];
+const PAGINAS_VALIDAS = ['dashboard', 'vagas', 'noticias', 'perfil'];
 
 function lerPaginaDoHash() {
   const hash = window.location.hash.replace('#', '').trim();
+  if (hash === 'vagas-noticias') return 'vagas';
   return PAGINAS_VALIDAS.includes(hash) ? hash : 'dashboard';
 }
 
 export default function App() {
   const [activePage, setActivePage] = useState(lerPaginaDoHash);
-  const [theme, setTheme] = useState(() => localStorage.getItem('inatel_theme') || 'inatel');
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('inatel_theme');
+    return saved === 'dark' ? 'dark' : 'inatel';
+  });
 
   // Autenticação & Dados da API
   const [autenticandoInicial, setAutenticandoInicial] = useState(() => Boolean(getStoredToken()));
@@ -27,26 +33,13 @@ export default function App() {
 
   const [aulas, setAulas] = useState([]);
   const [eventos, setEventos] = useState([]);
-  const [vagas, setVagas] = useState([]);
   const [noticias, setNoticias] = useState([]);
-  const [candidaturas, setCandidaturas] = useState([]);
   const [analiseLinkedIn, setAnaliseLinkedIn] = useState(null);
   const [vagasLinkedIn, setVagasLinkedIn] = useState([]);
 
-  // Atalhos de sub-abas ao navegar entre Perfil <-> Vagas LinkedIn <-> Notícias
-  const [abaSolicitadaVagas, setAbaSolicitadaVagas] = useState(null);
+  // Atalhos de sub-abas ao navegar entre Perfil <-> Vagas <-> Notícias
   const [noticiaSolicitada, setNoticiaSolicitada] = useState(null);
   const [secaoSolicitadaPerfil, setSecaoSolicitadaPerfil] = useState(null);
-
-  // Favoritos persistidos localmente
-  const [vagasSalvasIds, setVagasSalvasIds] = useState(() => {
-    try {
-      const salvo = JSON.parse(localStorage.getItem('inatel_vagas_salvas') || '[]');
-      return Array.isArray(salvo) ? salvo : [];
-    } catch {
-      return [];
-    }
-  });
 
   // Toast de feedback
   const [toast, setToast] = useState(null);
@@ -83,7 +76,7 @@ export default function App() {
   const handleLogout = useCallback(() => {
     setStoredToken('');
     setUsuario(null);
-    setCandidaturas([]);
+    setAulas([]);
     setAnaliseLinkedIn(null);
     setVagasLinkedIn([]);
   }, []);
@@ -98,28 +91,14 @@ export default function App() {
     return () => window.removeEventListener('inatel:unauthorized', onUnauthorized);
   }, [handleLogout, showToast]);
 
-  const toggleSalvarVaga = (vagaId) => {
-    setVagasSalvasIds((prev) => {
-      const proximo = prev.includes(vagaId)
-        ? prev.filter((id) => id !== vagaId)
-        : [...prev, vagaId];
-      localStorage.setItem('inatel_vagas_salvas', JSON.stringify(proximo));
-      return proximo;
-    });
-  };
-
-  const refreshVagasECandidaturas = useCallback(async () => {
-    const [listaVagas, listaCand] = await Promise.all([
-      api.getVagas(),
-      api.getCandidaturas(),
-    ]);
-    setVagas(listaVagas);
-    setCandidaturas(listaCand);
-  }, []);
-
   const refreshNoticias = useCallback(async () => {
     const listaNoticias = await api.getNoticias();
     setNoticias(listaNoticias);
+  }, []);
+
+  const refreshAulas = useCallback(async () => {
+    const listaAulas = await api.getAulas('todas');
+    setAulas(listaAulas);
   }, []);
 
   const refreshUsuario = useCallback(async () => {
@@ -128,24 +107,29 @@ export default function App() {
   }, []);
 
   const irParaVagasLinkedIn = useCallback(() => {
-    setAbaSolicitadaVagas('linkedin-vagas');
-    window.location.hash = 'vagas-noticias';
-    setActivePage('vagas-noticias');
+    window.location.hash = 'vagas';
+    setActivePage('vagas');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const irParaNoticias = useCallback((noticiaInicial = null) => {
-    setAbaSolicitadaVagas('noticias');
     if (noticiaInicial) {
       setNoticiaSolicitada(noticiaInicial);
     }
-    window.location.hash = 'vagas-noticias';
-    setActivePage('vagas-noticias');
+    window.location.hash = 'noticias';
+    setActivePage('noticias');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const irParaAnaliseLinkedIn = useCallback(() => {
     setSecaoSolicitadaPerfil('linkedin');
+    window.location.hash = 'perfil';
+    setActivePage('perfil');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const irParaHorasPerfil = useCallback(() => {
+    setSecaoSolicitadaPerfil('horas');
     window.location.hash = 'perfil';
     setActivePage('perfil');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -159,18 +143,14 @@ export default function App() {
         health,
         listaAulas,
         listaEventos,
-        listaVagas,
         listaNoticias,
-        listaCand,
         analiseLi,
         vagasLi,
       ] = await Promise.all([
         api.getHealth(),
         api.getAulas('todas'),
         api.getEventos(),
-        api.getVagas(),
         api.getNoticias(),
-        api.getCandidaturas(),
         api.getAnaliseLinkedIn(),
         api.getVagasLinkedIn(),
       ]);
@@ -178,9 +158,7 @@ export default function App() {
       setDbStatus(health?.database || { mode: 'online' });
       setAulas(listaAulas);
       setEventos(listaEventos);
-      setVagas(listaVagas);
       setNoticias(listaNoticias);
-      setCandidaturas(listaCand);
       setAnaliseLinkedIn(analiseLi);
       setVagasLinkedIn(vagasLi || []);
     } catch (err) {
@@ -279,9 +257,6 @@ export default function App() {
         onNavigate={handleNavigate}
         theme={theme}
         onChangeTheme={setTheme}
-        usuario={usuario}
-        totalVagas={vagas.length}
-        totalCandidaturas={candidaturas.length}
         dbStatus={dbStatus}
         onLogout={() => {
           handleLogout();
@@ -330,29 +305,32 @@ export default function App() {
                 usuario={usuario}
                 aulas={aulas}
                 eventos={eventos}
-                vagas={vagas}
                 noticias={noticias}
                 onNavigate={handleNavigate}
                 onIrParaNoticias={irParaNoticias}
+                onIrParaHoras={irParaHorasPerfil}
+                onRefreshAulas={refreshAulas}
+                onUsuarioAtualizado={setUsuario}
+                onNotify={showToast}
               />
             )}
 
-            {activePage === 'vagas-noticias' && (
-              <VagasNoticiasPage
+            {activePage === 'vagas' && (
+              <VagasPage
                 usuario={usuario}
-                vagas={vagas}
-                noticias={noticias}
                 vagasLinkedIn={vagasLinkedIn}
                 analiseLinkedIn={analiseLinkedIn}
-                abaSolicitada={abaSolicitadaVagas}
-                onAbaSolicitadaConsumida={() => setAbaSolicitadaVagas(null)}
-                noticiaSolicitada={noticiaSolicitada}
-                onNoticiaSolicitadaConsumida={() => setNoticiaSolicitada(null)}
                 onVagasLinkedInAtualizadas={setVagasLinkedIn}
                 onIrParaAnalisePerfil={irParaAnaliseLinkedIn}
-                vagasSalvasIds={vagasSalvasIds}
-                onToggleSalvarVaga={toggleSalvarVaga}
-                onRefreshVagasECandidaturas={refreshVagasECandidaturas}
+                onNotify={showToast}
+              />
+            )}
+
+            {activePage === 'noticias' && (
+              <NoticiasPage
+                noticias={noticias}
+                noticiaSolicitada={noticiaSolicitada}
+                onNoticiaSolicitadaConsumida={() => setNoticiaSolicitada(null)}
                 onRefreshNoticias={refreshNoticias}
                 onSetNoticias={setNoticias}
                 onNotify={showToast}
@@ -363,18 +341,14 @@ export default function App() {
               <UserProfilePage
                 usuario={usuario}
                 aulas={aulas}
-                vagas={vagas}
-                candidaturas={candidaturas}
-                vagasSalvasIds={vagasSalvasIds}
                 analiseLinkedIn={analiseLinkedIn}
                 secaoSolicitada={secaoSolicitadaPerfil}
                 onSecaoSolicitadaConsumida={() => setSecaoSolicitadaPerfil(null)}
                 onUsuarioAtualizado={setUsuario}
                 onRefreshUsuario={refreshUsuario}
+                onRefreshAulas={refreshAulas}
                 onAnaliseLinkedInAtualizada={setAnaliseLinkedIn}
                 onIrParaVagasLinkedIn={irParaVagasLinkedIn}
-                onRefreshVagasECandidaturas={refreshVagasECandidaturas}
-                onToggleSalvarVaga={toggleSalvarVaga}
                 onNavigate={handleNavigate}
                 onNotify={showToast}
                 onLogout={() => {
@@ -387,16 +361,8 @@ export default function App() {
         )}
       </main>
 
-      {/* Rodapé Institucional */}
-      <footer className="border-t border-[var(--border-subtle)] mt-10 py-6 text-xs theme-text-secondary">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>
-            <strong>Instituto Nacional de Telecomunicações (Inatel)</strong> — Santa Rita do
-            Sapucaí, MG
-          </span>
-          <span>Disciplina S05 (Interface Homem-Máquina) • React + Tailwind + FastAPI + PostgreSQL</span>
-        </div>
-      </footer>
+      {/* Rodapé Institucional Oficial Inatel */}
+      <Footer />
 
       {/* Toast flutuante */}
       {toast && (
