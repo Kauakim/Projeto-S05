@@ -1,3 +1,5 @@
+import { handleMockFallback } from './mockData';
+
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 const TOKEN_KEY = 'inatel_auth_token';
 
@@ -23,31 +25,45 @@ async function request(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  let data = null;
   try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  if (!response.ok) {
-    if (response.status === 401 && !path.startsWith('/api/auth/login')) {
-      window.dispatchEvent(new CustomEvent('inatel:unauthorized'));
+    if (response.status === 204) {
+      return null;
     }
-    const detail = data?.detail || `Erro HTTP ${response.status}`;
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-  }
 
-  return data;
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      if (response.status === 401 && !path.startsWith('/api/auth/login')) {
+        window.dispatchEvent(new CustomEvent('inatel:unauthorized'));
+      }
+      const detail = data?.detail || `Erro HTTP ${response.status}`;
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+
+    return data;
+  } catch (err) {
+    // Se a chamada de rede falhou (ERR_CONNECTION_REFUSED, offline, GitHub Pages sem backend local)
+    const isNetworkError =
+      err.name === 'TypeError' ||
+      err.message?.includes('Failed to fetch') ||
+      err.message?.includes('NetworkError') ||
+      err.message?.includes('Load failed');
+
+    if (isNetworkError) {
+      return handleMockFallback(path, options);
+    }
+    throw err;
+  }
 }
 
 export const api = {
