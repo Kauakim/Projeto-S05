@@ -3,6 +3,13 @@ import { handleMockFallback } from './mockData';
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 const TOKEN_KEY = 'inatel_auth_token';
 
+// Se estiver rodando no GitHub Pages (ou qualquer ambiente estático) sem VITE_API_URL configurada,
+// usa direto o mockData para evitar erros vermelhos de ERR_CONNECTION_REFUSED no console do navegador.
+const isGitHubPagesNoBackend =
+  !import.meta.env.VITE_API_URL &&
+  typeof window !== 'undefined' &&
+  (window.location.hostname.endsWith('github.io') || window.location.hostname.includes('github.io'));
+
 export function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
 }
@@ -16,6 +23,10 @@ export function setStoredToken(token) {
 }
 
 async function request(path, options = {}) {
+  if (isGitHubPagesNoBackend) {
+    return handleMockFallback(path, options);
+  }
+
   const url = `${API_BASE}${path}`;
   const token = getStoredToken();
 
