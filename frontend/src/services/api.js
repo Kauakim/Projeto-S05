@@ -67,7 +67,6 @@ export const api = {
   getMe: () => request('/api/auth/me'),
 
   // Usuário / Perfil e Senha
-  getUsuario: () => request('/api/usuario'),
   updateUsuario: (payload) =>
     request('/api/usuario', {
       method: 'PUT',
@@ -100,7 +99,7 @@ export const api = {
     }),
   getEventos: () => request('/api/eventos'),
 
-  // Notícias Reais do Portal Inatel
+  // Notícias Oficiais do Portal Inatel
   getNoticias: ({ busca = '', categoria = 'todas' } = {}) => {
     const params = new URLSearchParams();
     if (busca.trim()) params.set('busca', busca.trim());
@@ -113,19 +112,6 @@ export const api = {
       method: 'POST',
     }),
   lerNoticia: (noticiaId) => request(`/api/noticias/${noticiaId}`),
-  createNoticia: (payload) =>
-    request('/api/noticias', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  curtirNoticia: (noticiaId) =>
-    request(`/api/noticias/${noticiaId}/curtir`, {
-      method: 'POST',
-    }),
-  deleteNoticia: (noticiaId) =>
-    request(`/api/noticias/${noticiaId}`, {
-      method: 'DELETE',
-    }),
 
   // Integração LinkedIn (Web Scraping de Perfil & Vagas por Área)
   getAnaliseLinkedIn: () => request('/api/linkedin/analise'),

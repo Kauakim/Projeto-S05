@@ -194,19 +194,6 @@ class EventoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class NoticiaCreate(BaseModel):
-    titulo: str = Field(..., min_length=5, max_length=240)
-    resumo: str = Field(..., min_length=10, max_length=350)
-    conteudo: str = Field(..., min_length=20)
-    categoria: str = Field(..., min_length=2, max_length=50)
-    autor: str = Field(default="Portal Inatel", min_length=2, max_length=100)
-    fonte_nome: str = Field(default="", max_length=120)
-    url_original: str = Field(default="", max_length=600)
-    tempo_leitura: str = "3 min"
-    imagem_url: str = ""
-    destaque: bool = False
-
-
 class NoticiaOut(BaseModel):
     id: int
     titulo: str

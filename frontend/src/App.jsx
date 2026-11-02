@@ -128,13 +128,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const irParaHorasPerfil = useCallback(() => {
-    setSecaoSolicitadaPerfil('horas');
-    window.location.hash = 'perfil';
-    setActivePage('perfil');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
   const carregarDadosPortal = useCallback(async () => {
     setCarregandoDados(true);
     setErroApi(null);
@@ -308,7 +301,6 @@ export default function App() {
                 noticias={noticias}
                 onNavigate={handleNavigate}
                 onIrParaNoticias={irParaNoticias}
-                onIrParaHoras={irParaHorasPerfil}
                 onRefreshAulas={refreshAulas}
                 onUsuarioAtualizado={setUsuario}
                 onNotify={showToast}

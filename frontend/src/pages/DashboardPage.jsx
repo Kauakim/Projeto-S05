@@ -167,12 +167,6 @@ function calcularMediaAvaliacoes(avaliacoes = []) {
   return Math.round((soma / pesos) * 10) / 10;
 }
 
-const TIPO_EVENTO_LABEL = {
-  tech: { texto: 'Tecnologia & Inovação', cor: 'bg-blue-600/90 text-white' },
-  academic: { texto: 'Carreira & Acadêmico', cor: 'bg-emerald-600/90 text-white' },
-  cultural: { texto: 'Cultura & Integração', cor: 'bg-purple-600/90 text-white' },
-};
-
 const FORM_AULA_VAZIO = {
   codigo: '',
   turma: 'A',
@@ -199,7 +193,6 @@ export default function DashboardPage({
   noticias = [],
   onNavigate,
   onIrParaNoticias,
-  onIrParaHoras,
   onRefreshAulas,
   onUsuarioAtualizado,
   onNotify,

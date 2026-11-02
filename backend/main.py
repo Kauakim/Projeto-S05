@@ -38,7 +38,6 @@ from schemas import (
     BuscarVagasLinkedInRequest,
     EventoOut,
     LoginRequest,
-    NoticiaCreate,
     NoticiaOut,
     RegistroRequest,
     SincronizarNoticiasOut,
@@ -628,48 +627,6 @@ async def ler_noticia(noticia_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(noticia)
     return noticia
-
-
-@app.post("/api/noticias", response_model=NoticiaOut, status_code=status.HTTP_201_CREATED)
-async def publicar_noticia(
-    nova_noticia: NoticiaCreate,
-    _current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    dados = nova_noticia.model_dump()
-    if not dados.get("fonte_nome"):
-        dados["fonte_nome"] = dados.get("autor") or "Portal Inatel"
-    noticia = Noticia(**dados)
-    db.add(noticia)
-    await db.commit()
-    await db.refresh(noticia)
-    return noticia
-
-
-@app.post("/api/noticias/{noticia_id}/curtir", response_model=NoticiaOut)
-async def curtir_noticia(noticia_id: int, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(Noticia).where(Noticia.id == noticia_id))
-    noticia = res.scalar_one_or_none()
-    if noticia is None:
-        raise HTTPException(status_code=404, detail="Notícia não encontrada.")
-    noticia.curtidas += 1
-    await db.commit()
-    await db.refresh(noticia)
-    return noticia
-
-
-@app.delete("/api/noticias/{noticia_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remover_noticia(
-    noticia_id: int,
-    _current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    res = await db.execute(select(Noticia).where(Noticia.id == noticia_id))
-    noticia = res.scalar_one_or_none()
-    if noticia is None:
-        raise HTTPException(status_code=404, detail="Notícia não encontrada.")
-    await db.delete(noticia)
-    await db.commit()
 
 
 # ==========================================

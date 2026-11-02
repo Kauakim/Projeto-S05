@@ -47,7 +47,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
     setErro('');
     setModo('login');
     setLoginForm({
-      identificador: 'kaua@ges.inatel.br',
+      identificador: 'kaua.ribeiro@ges.inatel.br',
       senha: '123456',
     });
   };
@@ -72,7 +72,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
     const matTexto = String(regForm.matricula ?? '').trim();
     const matNumero = Number(matTexto);
     if (!/^\d+$/.test(matTexto) || !Number.isInteger(matNumero) || matNumero < 0 || matNumero > 999999) {
-      setErro('A matrícula deve ser um número inteiro entre 0 e 999999.');
+      setErro('A matrícula deve ser um número natural.');
       return;
     }
     if (regForm.senha !== regForm.confirmarSenha) {
@@ -306,7 +306,7 @@ export default function LoginPage({ onLoginSuccess, theme, onChangeTheme }) {
               <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs">
                 <div className="theme-text-secondary">
                   <span className="font-bold block">Conta padrão de teste:</span>
-                  <span>Matrícula 2048 • Senha inicial: 123456</span>
+                  <span>Matrícula 777 • Senha inicial: 123456</span>
                 </div>
                 <button
                   type="button"
