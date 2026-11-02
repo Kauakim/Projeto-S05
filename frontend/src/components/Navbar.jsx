@@ -33,6 +33,11 @@ export default function Navbar({
       label: 'Notícias',
       icon: 'file',
     },
+    {
+      id: 'perfil',
+      label: 'Minha Conta',
+      icon: 'user',
+    },
   ];
 
   const apiOn = Boolean(dbStatus);
@@ -143,27 +148,12 @@ export default function Navbar({
               <span>{apiOn ? 'API: ON' : 'API: OFF'}</span>
             </div>
 
-            {/* Botão simples de Minha Conta (SVG pessoa comum) */}
-            <button
-              type="button"
-              onClick={() => handleSelectPage('perfil')}
-              title="Minha Conta"
-              aria-label="Minha Conta"
-              className={`h-9 w-9 rounded-xl border transition cursor-pointer flex items-center justify-center shrink-0 box-border ${
-                activePage === 'perfil'
-                  ? 'bg-white text-[#003057] border-white shadow-sm'
-                  : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
-              }`}
-            >
-              <Icon name="person" className="w-4 h-4" />
-            </button>
-
             {/* Botão Sair */}
             <button
               type="button"
               onClick={onLogout}
               title="Encerrar sessão"
-              className="hidden sm:inline-flex h-9 items-center justify-center px-3.5 rounded-xl text-xs font-bold bg-red-500/20 hover:bg-red-500/35 text-white border border-red-400/30 transition cursor-pointer box-border shrink-0"
+              className="h-9 items-center justify-center px-3.5 rounded-xl text-xs font-bold bg-red-500/20 hover:bg-red-500/35 text-white border border-red-400/30 transition cursor-pointer box-border shrink-0 flex gap-1.5"
             >
               <span>Sair</span>
             </button>

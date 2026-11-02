@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import { api } from '../services/api';
+import { obterMetasPorCurso } from '../utils/metasInatel';
 
 const DIAS_SEMANA = [
   { id: 'todas', label: 'Semana Toda' },
@@ -37,15 +38,105 @@ const AVISOS_INICIAIS = [
   },
 ];
 
+const DIAS_LABEL_MAP = {
+  seg: 'Segunda',
+  ter: 'Terça',
+  qua: 'Quarta',
+  qui: 'Quinta',
+  sex: 'Sexta',
+  sab: 'Sábado',
+};
+
+function formatarDiasBadge(diaStr = '') {
+  const dias = String(diaStr)
+    .split(/[,\s/]+/)
+    .map((d) => DIAS_LABEL_MAP[d.toLowerCase().slice(0, 3)] || d.toUpperCase())
+    .filter(Boolean);
+  return dias.length > 0 ? dias.join(', ') : 'SEMANA';
+}
+
+function formatarHorariosCard(horarioStr = '', localPadrao = 'P1-S12') {
+  if (!horarioStr) return `Sala ${localPadrao}`;
+  if (horarioStr.includes('|')) {
+    return horarioStr.split('|').map((h) => h.trim()).join(' • ');
+  }
+  return `Sala ${localPadrao} • ${horarioStr}`;
+}
+
+function parseSessoesAula(aula) {
+  if (!aula) {
+    return [{ dia: 'seg', horario: '08:00 - 09:40', local: 'P1-S12' }];
+  }
+  const horarioStr = String(aula.horario || '').trim();
+  const localStr = String(aula.local || 'P1-S12').trim();
+  const diasStr = String(aula.dia || 'seg').trim();
+
+  if (horarioStr.includes('|')) {
+    const partes = horarioStr.split('|').map((p) => p.trim()).filter(Boolean);
+    const parsed = partes.map((p) => {
+      const m = p.match(/^(?:([A-Za-zçãéíóú]+):\s*)?([^()]+)(?:\((.*?)\))?$/i);
+      let d = 'seg';
+      if (m && m[1]) {
+        const diaCod = m[1].toLowerCase().slice(0, 3);
+        if (DIAS_LABEL_MAP[diaCod]) d = diaCod;
+      }
+      const h = m && m[2] ? m[2].trim() : '08:00 - 09:40';
+      const l = m && m[3] ? m[3].trim() : localStr;
+      return { dia: d, horario: h, local: l };
+    });
+    if (parsed.length > 0) return parsed;
+  }
+
+  const diasLista = diasStr
+    .split(/[,\s/]+/)
+    .map((d) => d.toLowerCase().slice(0, 3))
+    .filter((d) => DIAS_LABEL_MAP[d]);
+
+  if (diasLista.length > 0) {
+    return diasLista.map((d) => ({
+      dia: d,
+      horario: horarioStr || '08:00 - 09:40',
+      local: localStr,
+    }));
+  }
+
+  return [{ dia: aula.dia || 'seg', horario: horarioStr || '08:00 - 09:40', local: localStr }];
+}
+
+function formatSessoesParaSalvar(sessoes = [], localPadrao = 'P1-S12') {
+  if (!sessoes.length) {
+    return {
+      dia: 'seg',
+      horario: '08:00 - 09:40',
+      local: localPadrao,
+    };
+  }
+  const diasUnicos = Array.from(new Set(sessoes.map((s) => s.dia))).join(', ');
+  const horarioFormatado = sessoes
+    .map((s) => {
+      const diaCurto = DIAS_LABEL_MAP[s.dia] || s.dia;
+      const salaExtra = s.local && s.local !== localPadrao ? ` (${s.local})` : '';
+      return `${diaCurto}: ${s.horario}${salaExtra}`;
+    })
+    .join(' | ');
+  const localFinal = sessoes[0]?.local || localPadrao;
+  return {
+    dia: diasUnicos,
+    horario: horarioFormatado,
+    local: localFinal,
+  };
+}
+
 function getNotaBadgeStyle(nota) {
-  if (nota < 6) {
+  const val = Number(nota || 0);
+  if (val < 60) {
     return {
       pill: 'bg-red-600 text-white',
       bar: 'bg-red-500',
-      status: 'Atenção (NP3)',
+      status: 'Atenção (NP3 / Exame)',
     };
   }
-  if (nota < 8) {
+  if (val < 80) {
     return {
       pill: 'bg-amber-500 text-white',
       bar: 'bg-amber-500',
@@ -59,18 +150,6 @@ function getNotaBadgeStyle(nota) {
   };
 }
 
-function parseFrequencia(freqStr) {
-  const m = String(freqStr || '00/25').match(/(\d+)\s*\/\s*(\d+)/);
-  if (!m) return { faltas: 0, limite: 25 };
-  return { faltas: Number(m[1]), limite: Math.max(1, Number(m[2])) };
-}
-
-function formatFrequencia(faltas, limite) {
-  const f = Math.max(0, Number(faltas) || 0);
-  const l = Math.max(1, Number(limite) || 25);
-  return `${String(f).padStart(2, '0')}/${String(l).padStart(2, '0')}`;
-}
-
 function calcularMediaAvaliacoes(avaliacoes = []) {
   let soma = 0;
   let pesos = 0;
@@ -79,8 +158,7 @@ function calcularMediaAvaliacoes(avaliacoes = []) {
       const n = Number(av.nota);
       const p = Number(av.peso) || 1;
       if (!Number.isNaN(n) && p > 0) {
-        const notaNorm = n > 10 ? n / 10 : n;
-        soma += notaNorm * p;
+        soma += n * p;
         pesos += p;
       }
     }
@@ -100,11 +178,10 @@ const FORM_AULA_VAZIO = {
   turma: 'A',
   disciplina: '',
   professor: '',
-  dia: 'seg',
-  horario: '08:00 - 09:40',
   local: 'P1-S12',
-  faltas: 0,
-  limiteFaltas: 25,
+  sessoes: [
+    { dia: 'seg', horario: '08:00 - 09:40', local: 'P1-S12' },
+  ],
   prova_alert: false,
   prova_data: '',
   nota: 0,
@@ -145,14 +222,22 @@ export default function DashboardPage({
   const [horasForm, setHorasForm] = useState({
     crs: 86.4,
     horas_ac: 112,
-    meta_ac: 160,
+    meta_ac: 200,
     horas_cp: 28,
     meta_cp: 40,
-    horas_trilha: 80,
-    meta_trilha: 120,
+    horas_trilha: 45,
+    meta_trilha: 60,
   });
 
-  const temAulaSabado = useMemo(() => aulas.some((a) => a.dia === 'sab'), [aulas]);
+  const temAulaSabado = useMemo(() => {
+    return aulas.some((a) => {
+      const dias = String(a.dia || '')
+        .toLowerCase()
+        .split(/[,\s/]+/);
+      return dias.some((d) => d.startsWith('sab'));
+    });
+  }, [aulas]);
+
   const abasDiasVisiveis = useMemo(
     () => DIAS_SEMANA.filter((d) => d.id !== 'sab' || temAulaSabado || diaSelecionado === 'sab'),
     [temAulaSabado, diaSelecionado]
@@ -160,7 +245,14 @@ export default function DashboardPage({
 
   const aulasFiltradas = useMemo(() => {
     if (diaSelecionado === 'todas') return aulas;
-    return aulas.filter((a) => a.dia === diaSelecionado);
+    const target = diaSelecionado.toLowerCase();
+    return aulas.filter((a) => {
+      const dias = String(a.dia || '')
+        .toLowerCase()
+        .split(/[,\s/]+/)
+        .map((d) => d.slice(0, 3));
+      return dias.includes(target);
+    });
   }, [aulas, diaSelecionado]);
 
   const avisosAtivos = useMemo(
@@ -199,10 +291,14 @@ export default function DashboardPage({
   };
 
   const abrirModalNovaAula = () => {
+    const diaInicial = diaSelecionado !== 'todas' ? diaSelecionado : 'seg';
     setAulaEditandoId(null);
     setAulaForm({
       ...FORM_AULA_VAZIO,
-      dia: diaSelecionado !== 'todas' ? diaSelecionado : 'seg',
+      local: 'P1-S12',
+      sessoes: [
+        { dia: diaInicial, horario: '08:00 - 09:40', local: 'P1-S12' },
+      ],
       avaliacoes: [
         {
           id: `np1-${Date.now()}`,
@@ -228,7 +324,7 @@ export default function DashboardPage({
   };
 
   const abrirModalEditarAula = (aula) => {
-    const { faltas, limite } = parseFrequencia(aula.frequencia);
+    const sessoes = parseSessoesAula(aula);
     const avs = Array.isArray(aula.avaliacoes)
       ? aula.avaliacoes.map((av, idx) => ({
           id: av.id || `av-${aula.id}-${idx}`,
@@ -247,11 +343,11 @@ export default function DashboardPage({
       turma: aula.turma || 'A',
       disciplina: aula.disciplina || '',
       professor: aula.professor || '',
-      dia: aula.dia || 'seg',
-      horario: aula.horario || '08:00 - 09:40',
-      local: aula.local || '',
-      faltas,
-      limiteFaltas: limite,
+      local: aula.local || sessoes[0]?.local || 'P1-S12',
+      sessoes:
+        sessoes.length > 0
+          ? sessoes
+          : [{ dia: 'seg', horario: '08:00 - 09:40', local: aula.local || 'P1-S12' }],
       prova_alert: Boolean(aula.prova_alert),
       prova_data: aula.prova_data || '',
       nota: Number(aula.nota ?? 0),
@@ -259,6 +355,38 @@ export default function DashboardPage({
       avaliacoes: avs,
     });
     setModalAulaAberto(true);
+  };
+
+  const adicionarSessao = () => {
+    setAulaForm((prev) => {
+      const ultima = prev.sessoes[prev.sessoes.length - 1];
+      const proximoDia = ultima?.dia === 'seg' ? 'qua' : ultima?.dia === 'ter' ? 'qui' : 'sex';
+      return {
+        ...prev,
+        sessoes: [
+          ...prev.sessoes,
+          {
+            dia: proximoDia,
+            horario: ultima?.horario || '10:00 - 11:40',
+            local: ultima?.local || prev.local || 'P1-S12',
+          },
+        ],
+      };
+    });
+  };
+
+  const atualizarSessao = (idx, campo, valor) => {
+    setAulaForm((prev) => ({
+      ...prev,
+      sessoes: prev.sessoes.map((s, i) => (i === idx ? { ...s, [campo]: valor } : s)),
+    }));
+  };
+
+  const removerSessao = (idx) => {
+    setAulaForm((prev) => ({
+      ...prev,
+      sessoes: prev.sessoes.filter((_, i) => i !== idx),
+    }));
   };
 
   const adicionarItemAvaliacao = (presetTitulo = '', presetTipo = 'Prova') => {
@@ -336,18 +464,19 @@ export default function DashboardPage({
           ? mediaCalculadaModal
           : Number(aulaForm.nota || 0);
 
+      const { dia, horario, local } = formatSessoesParaSalvar(aulaForm.sessoes, aulaForm.local);
+
       const payload = {
         codigo: aulaForm.codigo.trim().toUpperCase(),
         turma: aulaForm.turma.trim().toUpperCase() || 'A',
         disciplina: aulaForm.disciplina.trim(),
         professor: aulaForm.professor.trim(),
-        dia: aulaForm.dia,
-        horario: aulaForm.horario.trim(),
-        local: aulaForm.local.trim(),
-        frequencia: formatFrequencia(aulaForm.faltas, aulaForm.limiteFaltas),
+        dia,
+        horario,
+        local,
         prova_alert: Boolean(aulaForm.prova_alert),
         prova_data: aulaForm.prova_data.trim(),
-        nota: notaEfetiva,
+        nota: Math.min(100, Math.max(0, notaEfetiva)),
         calcular_nota_automatica: Boolean(aulaForm.calcular_nota_automatica),
         avaliacoes: avaliacoesLimpas,
       };
@@ -380,15 +509,19 @@ export default function DashboardPage({
     }
   };
 
+  const metasCalculadas = useMemo(() => {
+    return obterMetasPorCurso(usuario?.curso);
+  }, [usuario?.curso]);
+
   const abrirModalHoras = () => {
     setHorasForm({
       crs: usuario?.crs ?? 86.4,
       horas_ac: usuario?.horas_ac ?? usuario?.horas_complementares ?? 112,
-      meta_ac: usuario?.meta_ac ?? usuario?.meta_horas ?? 160,
+      meta_ac: metasCalculadas.ac,
       horas_cp: usuario?.horas_cp ?? 28,
-      meta_cp: usuario?.meta_cp ?? 40,
-      horas_trilha: usuario?.horas_trilha ?? 80,
-      meta_trilha: usuario?.meta_trilha ?? 120,
+      meta_cp: metasCalculadas.cp,
+      horas_trilha: usuario?.horas_trilha ?? 45,
+      meta_trilha: metasCalculadas.trilha,
     });
     setModalHorasAberto(true);
   };
@@ -396,7 +529,7 @@ export default function DashboardPage({
   const calcularCrsPelasDisciplinas = () => {
     if (!aulas.length) return;
     const soma = aulas.reduce((acc, a) => acc + Number(a.nota || 0), 0);
-    const crsCalc = Math.round((soma / aulas.length) * 10 * 10) / 10;
+    const crsCalc = Math.round((soma / aulas.length) * 10) / 10;
     setHorasForm((p) => ({ ...p, crs: Math.min(100, Math.max(0, crsCalc)) }));
   };
 
@@ -407,11 +540,11 @@ export default function DashboardPage({
       const atualizado = await api.updateUsuario({
         crs: Number(horasForm.crs),
         horas_ac: Math.max(0, Number(horasForm.horas_ac)),
-        meta_ac: Math.max(1, Number(horasForm.meta_ac)),
+        meta_ac: metasCalculadas.ac,
         horas_cp: Math.max(0, Number(horasForm.horas_cp)),
-        meta_cp: Math.max(1, Number(horasForm.meta_cp)),
+        meta_cp: metasCalculadas.cp,
         horas_trilha: Math.max(0, Number(horasForm.horas_trilha)),
-        meta_trilha: Math.max(1, Number(horasForm.meta_trilha)),
+        meta_trilha: metasCalculadas.trilha,
       });
       if (onUsuarioAtualizado) onUsuarioAtualizado(atualizado);
       if (onNotify) onNotify('Horas de AC, CP, Trilha e CRS atualizados com sucesso!');
@@ -434,114 +567,168 @@ export default function DashboardPage({
   }, [noticias]);
 
   const horasAc = usuario?.horas_ac ?? usuario?.horas_complementares ?? 112;
-  const metaAc = usuario?.meta_ac ?? usuario?.meta_horas ?? 160;
+  const metaAc = metasCalculadas.ac;
   const horasCp = usuario?.horas_cp ?? 28;
-  const metaCp = usuario?.meta_cp ?? 40;
-  const horasTrilha = usuario?.horas_trilha ?? 80;
-  const metaTrilha = usuario?.meta_trilha ?? 120;
+  const metaCp = metasCalculadas.cp;
+  const horasTrilha = usuario?.horas_trilha ?? 45;
+  const metaTrilha = metasCalculadas.trilha;
 
   return (
     <div className="space-y-8">
       {/* ==========================================
           1. BANNER DE BOAS-VINDAS + RESUMO DO ALUNO (CRS, AC, CP & TRILHA)
           ========================================== */}
-      <section className="theme-surface rounded-2xl border p-6 sm:p-7 shadow-xs">
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold theme-badge-soft">
-              <Icon name="cap" className="w-3.5 h-3.5" />
-              <span>
-                {usuario?.curso || 'Engenharia de Software'} • {usuario?.periodo || 6}º Período
+      <section className="theme-surface rounded-2xl border p-6 sm:p-7 shadow-xs space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold theme-badge-soft">
+                <Icon name="cap" className="w-3.5 h-3.5" />
+                <span>
+                  {usuario?.curso} • {usuario?.periodo}º Período
+                </span>
+              </span>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full theme-muted border">
+                Matrícula: {usuario?.matricula}
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Olá, {usuario?.nome || 'Kauã'}!
+              Olá, {usuario?.nome}!
             </h1>
-            <p className="text-sm sm:text-base theme-text-secondary max-w-2xl">
-              Gerencie suas turmas, provas feitas, notas obtidas e horas validadas de{' '}
-              <strong>AC, CP e Trilha</strong> sempre que precisar.
+            <p className="text-sm theme-text-secondary max-w-3xl">
+              Gerencie suas turmas, frequência, provas, notas e acompanhe o cumprimento das suas metas de {' '}
+              <strong>AC, CP e Trilha</strong>.
             </p>
           </div>
+        </div>
 
-          {/* Métricas acadêmicas clicáveis p/ edição imediata */}
-          <div className="space-y-2.5 shrink-0">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <button
-                type="button"
-                onClick={abrirModalHoras}
-                title="Clique para editar seu CRS do semestre"
-                className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer group"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wide theme-text-secondary flex items-center justify-between gap-1">
-                  <span>CRS (Semestre)</span>
-                  <Icon name="edit" className="w-3 h-3 opacity-60 group-hover:opacity-100" />
-                </span>
-                <span className="text-xl font-extrabold theme-accent-text mt-0.5 block">
-                  {usuario?.crs !== undefined ? `${Number(usuario.crs).toFixed(1)}%` : '86.4%'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={abrirModalHoras}
-                title="Clique para alterar horas validadas de AC"
-                className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer group"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wide theme-text-secondary flex items-center justify-between gap-1">
-                  <span>Horas AC</span>
-                  <Icon name="edit" className="w-3 h-3 opacity-60 group-hover:opacity-100" />
-                </span>
-                <span className="text-xl font-extrabold mt-0.5 block">
-                  {horasAc}
-                  <span className="text-xs font-normal theme-text-secondary">/{metaAc}h</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={abrirModalHoras}
-                title="Clique para alterar horas validadas de CP"
-                className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer group"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wide theme-text-secondary flex items-center justify-between gap-1">
-                  <span>Horas CP</span>
-                  <Icon name="edit" className="w-3 h-3 opacity-60 group-hover:opacity-100" />
-                </span>
-                <span className="text-xl font-extrabold mt-0.5 block">
-                  {horasCp}
-                  <span className="text-xs font-normal theme-text-secondary">/{metaCp}h</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={abrirModalHoras}
-                title="Clique para alterar horas validadas de Trilha"
-                className="theme-muted border rounded-xl p-3 text-left hover:border-[#126ae2] transition cursor-pointer group"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wide theme-text-secondary flex items-center justify-between gap-1">
-                  <span>Trilha</span>
-                  <Icon name="edit" className="w-3 h-3 opacity-60 group-hover:opacity-100" />
-                </span>
-                <span className="text-xl font-extrabold mt-0.5 block">
-                  {horasTrilha}
-                  <span className="text-xs font-normal theme-text-secondary">/{metaTrilha}h</span>
-                </span>
-              </button>
+        {/* Métricas acadêmicas organizadas com barras de progresso */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Card CRS */}
+          <button
+            type="button"
+            onClick={abrirModalHoras}
+            title="Clique para visualizar ou editar seu CRS"
+            className="theme-muted border rounded-xl p-3.5 text-left hover:border-[#126ae2] transition cursor-pointer group flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wide theme-text-secondary">
+                CRS (Semestre)
+              </span>
+              <Icon name="edit" className="w-3 h-3 opacity-50 group-hover:opacity-100" />
             </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={abrirModalHoras}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg theme-badge-soft hover:opacity-90 transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Icon name="hourglass" className="w-3.5 h-3.5" />
-                <span>Ajustar Horas AC / CP / Trilha &amp; CRS</span>
-              </button>
+            <div>
+              <span className="text-2xl font-black theme-accent-text tracking-tight block">
+                {usuario?.crs !== undefined ? `${Number(usuario.crs).toFixed(1)}%` : '86.4%'}
+              </span>
+              <span className="text-[11px] theme-text-secondary">Rendimento semestral</span>
             </div>
-          </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(5, Number(usuario?.crs || 86.4)))}%`,
+                }}
+              />
+            </div>
+          </button>
+
+          {/* Card Horas AC */}
+          <button
+            type="button"
+            onClick={abrirModalHoras}
+            title="Clique para visualizar ou editar horas de AC"
+            className="theme-muted border rounded-xl p-3.5 text-left hover:border-[#126ae2] transition cursor-pointer group flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wide theme-text-secondary">
+                Horas AC
+              </span>
+              <Icon name="edit" className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+            </div>
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-black tracking-tight">{horasAc}</span>
+                <span className="text-xs font-semibold theme-text-secondary">/{metaAc}h</span>
+              </div>
+              <span className="text-[11px] theme-text-secondary">
+                {Math.min(100, Math.round((horasAc / metaAc) * 100))}% concluído
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(5, Math.round((horasAc / metaAc) * 100)))}%`,
+                }}
+              />
+            </div>
+          </button>
+
+          {/* Card Horas CP */}
+          <button
+            type="button"
+            onClick={abrirModalHoras}
+            title="Clique para visualizar ou editar horas de CP"
+            className="theme-muted border rounded-xl p-3.5 text-left hover:border-[#126ae2] transition cursor-pointer group flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wide theme-text-secondary">
+                Horas CP
+              </span>
+              <Icon name="edit" className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+            </div>
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-black tracking-tight">{horasCp}</span>
+                <span className="text-xs font-semibold theme-text-secondary">/{metaCp}h</span>
+              </div>
+              <span className="text-[11px] theme-text-secondary">
+                {Math.min(100, Math.round((horasCp / metaCp) * 100))}% concluído
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(5, Math.round((horasCp / metaCp) * 100)))}%`,
+                }}
+              />
+            </div>
+          </button>
+
+          {/* Card Trilha */}
+          <button
+            type="button"
+            onClick={abrirModalHoras}
+            title="Clique para visualizar ou editar horas de Trilha"
+            className="theme-muted border rounded-xl p-3.5 text-left hover:border-[#126ae2] transition cursor-pointer group flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wide theme-text-secondary">
+                Trilha
+              </span>
+              <Icon name="edit" className="w-3 h-3 opacity-50 group-hover:opacity-100" />
+            </div>
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-black tracking-tight">{horasTrilha}</span>
+                <span className="text-xs font-semibold theme-text-secondary">/{metaTrilha}h</span>
+              </div>
+              <span className="text-[11px] theme-text-secondary">
+                {Math.min(100, Math.round((horasTrilha / metaTrilha) * 100))}% concluído
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(5, Math.round((horasTrilha / metaTrilha) * 100)))}%`,
+                }}
+              />
+            </div>
+          </button>
         </div>
       </section>
 
@@ -553,10 +740,10 @@ export default function DashboardPage({
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Icon name="calendar" className="w-5 h-5 theme-accent-text" />
-              Minhas Aulas, Turmas, Provas &amp; Notas ({aulas.length})
+              Minhas Aulas, Turmas, Provas &amp; Notas
             </h2>
             <p className="text-xs sm:text-sm theme-text-secondary">
-              Cadastre novas disciplinas/turmas, registre provas já feitas, lance notas obtidas e controle suas faltas.
+              Cadastre novas disciplinas/turmas, dias e horários semanais, registre provas já feitas e lance notas obtidas (escala 0 a 100).
             </p>
           </div>
 
@@ -623,7 +810,7 @@ export default function DashboardPage({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg theme-badge-soft uppercase">
-                        {aula.codigo} • Turma {aula.turma || 'A'} • {aula.dia.toUpperCase()}
+                        {aula.codigo} • Turma {aula.turma || 'A'} • {formatarDiasBadge(aula.dia)}
                       </span>
 
                       {aula.prova_alert ? (
@@ -644,17 +831,15 @@ export default function DashboardPage({
                       {aula.codigo} - {aula.disciplina}
                     </h3>
 
-                    <div className="space-y-1 text-xs theme-text-secondary">
+                    <div className="space-y-1.5 text-xs theme-text-secondary">
                       <p className="flex items-center gap-1.5">
                         <Icon name="user" className="w-3.5 h-3.5 theme-accent-text" />
                         <span>{aula.professor}</span>
                       </p>
-                      <p className="flex items-center gap-1.5">
-                        <Icon name="clock" className="w-3.5 h-3.5 theme-accent-text" />
-                        <span>
-                          Sala <strong>{aula.local}</strong> • {aula.horario}
-                        </span>
-                      </p>
+                      <div className="flex items-start gap-1.5">
+                        <Icon name="clock" className="w-3.5 h-3.5 mt-0.5 theme-accent-text shrink-0" />
+                        <span className="leading-snug">{formatarHorariosCard(aula.horario, aula.local)}</span>
+                      </div>
                     </div>
 
                     {/* Provas já feitas e notas obtidas + próximas */}
@@ -672,7 +857,7 @@ export default function DashboardPage({
                               <span>✓ {av.titulo}:</span>
                               <strong>
                                 {av.nota !== null && av.nota !== undefined
-                                  ? Number(av.nota).toFixed(1)
+                                  ? Number(av.nota).toFixed(0)
                                   : '-'}
                               </strong>
                             </span>
@@ -695,18 +880,18 @@ export default function DashboardPage({
 
                   <div className="space-y-3 pt-3 border-t border-[var(--border-subtle)]">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-xs font-bold px-3 py-1 rounded-full theme-muted border">
-                        FALTAS: {aula.frequencia}
+                      <span className="text-xs font-semibold theme-text-secondary">
+                        Desempenho: <strong className="theme-text-primary">{notaInfo.status}</strong>
                       </span>
-                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${notaInfo.pill}`}>
-                        NOTA: {Number(aula.nota || 0).toFixed(1)}
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full shadow-xs ${notaInfo.pill}`}>
+                        NOTA FINAL: {Number(aula.nota || 0).toFixed(0)}/100
                       </span>
                     </div>
 
                     <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${notaInfo.bar}`}
-                        style={{ width: `${Math.min(100, Math.max(8, Number(aula.nota || 0) * 10))}%` }}
+                        style={{ width: `${Math.min(100, Math.max(6, Number(aula.nota || 0)))}%` }}
                       />
                     </div>
 
@@ -778,7 +963,7 @@ export default function DashboardPage({
                   </span>
                 </h2>
                 <p className="text-xs theme-text-secondary mt-0.5">
-                  Altere turma, horário, faltas, provas já realizadas, próximas provas e notas obtidas.
+                  Altere turma, múltiplos dias e horários semanais, provas já realizadas e notas obtidas (0 a 100).
                 </p>
               </div>
               <button
@@ -826,7 +1011,7 @@ export default function DashboardPage({
                   />
                 </div>
 
-                <div className="sm:col-span-5">
+                <div className="sm:col-span-6">
                   <label className="text-xs font-bold block mb-1">Professor(a) *</label>
                   <input
                     required
@@ -837,66 +1022,106 @@ export default function DashboardPage({
                   />
                 </div>
 
-                <div className="sm:col-span-3">
-                  <label className="text-xs font-bold block mb-1">Dia da Semana *</label>
-                  <select
-                    value={aulaForm.dia}
-                    onChange={(e) => setAulaForm((p) => ({ ...p, dia: e.target.value }))}
-                    className="w-full theme-muted border rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="seg">Segunda-feira</option>
-                    <option value="ter">Terça-feira</option>
-                    <option value="qua">Quarta-feira</option>
-                    <option value="qui">Quinta-feira</option>
-                    <option value="sex">Sexta-feira</option>
-                    <option value="sab">Sábado</option>
-                  </select>
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className="text-xs font-bold block mb-1">Horário *</label>
+                <div className="sm:col-span-6">
+                  <label className="text-xs font-bold block mb-1">Sala Principal / Lab *</label>
                   <input
                     required
-                    placeholder="10:00 - 11:40"
-                    value={aulaForm.horario}
-                    onChange={(e) => setAulaForm((p) => ({ ...p, horario: e.target.value }))}
-                    className="w-full theme-muted border rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className="text-xs font-bold block mb-1">Sala / Laboratório *</label>
-                  <input
-                    required
-                    placeholder="Ex: P1-S17, Lab Soft 03"
+                    placeholder="Ex: P1-S12, Lab Soft 03"
                     value={aulaForm.local}
                     onChange={(e) => setAulaForm((p) => ({ ...p, local: e.target.value }))}
                     className="w-full theme-muted border rounded-xl px-3 py-2 text-sm"
                   />
                 </div>
 
-                <div className="sm:col-span-4">
-                  <label className="text-xs font-bold block mb-1">Faltas Tidas</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={aulaForm.faltas}
-                    onChange={(e) => setAulaForm((p) => ({ ...p, faltas: e.target.value }))}
-                    className="w-full theme-muted border rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
+                {/* Seção de Múltiplos Dias e Horários da mesma matéria na semana */}
+                <div className="sm:col-span-12 theme-surface border rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-extrabold uppercase tracking-wide flex items-center gap-1.5">
+                        <Icon name="clock" className="w-3.5 h-3.5 theme-accent-text" />
+                        <span>Dias &amp; Horários Semanais da Turma</span>
+                      </h4>
+                      <p className="text-[11px] theme-text-secondary">
+                        Adicione todos os dias e horários em que você tem aula desta disciplina (ex: 2x ou 3x na semana).
+                      </p>
+                    </div>
 
-                <div className="sm:col-span-4">
-                  <label className="text-xs font-bold block mb-1">Limite Máx. de Faltas</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={aulaForm.limiteFaltas}
-                    onChange={(e) => setAulaForm((p) => ({ ...p, limiteFaltas: e.target.value }))}
-                    className="w-full theme-muted border rounded-xl px-3 py-2 text-sm"
-                  />
+                    <button
+                      type="button"
+                      onClick={adicionarSessao}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold theme-btn-primary flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                    >
+                      <Icon name="plus" className="w-3 h-3" />
+                      <span>+ Adicionar Dia/Horário</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {aulaForm.sessoes.map((sessao, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="theme-muted border rounded-xl p-2.5 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center"
+                      >
+                        <div className="sm:col-span-3">
+                          <label className="text-[10px] font-bold uppercase theme-text-secondary block mb-0.5">
+                            Dia da Semana *
+                          </label>
+                          <select
+                            value={sessao.dia}
+                            onChange={(e) => atualizarSessao(sIdx, 'dia', e.target.value)}
+                            className="w-full theme-surface border rounded-lg px-2.5 py-1.5 text-xs font-semibold"
+                          >
+                            <option value="seg">Segunda-feira</option>
+                            <option value="ter">Terça-feira</option>
+                            <option value="qua">Quarta-feira</option>
+                            <option value="qui">Quinta-feira</option>
+                            <option value="sex">Sexta-feira</option>
+                            <option value="sab">Sábado</option>
+                          </select>
+                        </div>
+
+                        <div className="sm:col-span-4">
+                          <label className="text-[10px] font-bold uppercase theme-text-secondary block mb-0.5">
+                            Horário *
+                          </label>
+                          <input
+                            required
+                            placeholder="Ex: 08:00 - 09:40"
+                            value={sessao.horario}
+                            onChange={(e) => atualizarSessao(sIdx, 'horario', e.target.value)}
+                            className="w-full theme-surface border rounded-lg px-2.5 py-1.5 text-xs"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-4">
+                          <label className="text-[10px] font-bold uppercase theme-text-secondary block mb-0.5">
+                            Sala
+                          </label>
+                          <input
+                            placeholder="Ex: P1-S12"
+                            value={sessao.local}
+                            onChange={(e) => atualizarSessao(sIdx, 'local', e.target.value)}
+                            className="w-full theme-surface border rounded-lg px-2.5 py-1.5 text-xs"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-1 flex justify-end pt-2 sm:pt-4">
+                          {aulaForm.sessoes.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removerSessao(sIdx)}
+                              title="Remover este horário"
+                              className="p-1.5 rounded-lg border border-[var(--border-subtle)] hover:text-red-500 cursor-pointer"
+                            >
+                              <Icon name="trash" className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <span className="text-[10px] theme-text-secondary opacity-40">1º</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -908,32 +1133,11 @@ export default function DashboardPage({
                       Provas Já Feitas, Trabalhos &amp; Próximas Avaliações
                     </h3>
                     <p className="text-xs theme-text-secondary">
-                      Marque &ldquo;Já feita&rdquo; para informar a nota obtida (0 a 10) ou deixe como agendada.
+                      Marque &ldquo;Já feita&rdquo; para informar a nota obtida (0 a 100) ou deixe como agendada.
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => adicionarItemAvaliacao('NP1', 'Prova')}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold theme-surface border hover:opacity-85 cursor-pointer"
-                    >
-                      + NP1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adicionarItemAvaliacao('NP2', 'Prova')}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold theme-surface border hover:opacity-85 cursor-pointer"
-                    >
-                      + NP2
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adicionarItemAvaliacao('NP3', 'Prova')}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold theme-surface border hover:opacity-85 cursor-pointer"
-                    >
-                      + NP3
-                    </button>
                     <button
                       type="button"
                       onClick={() => adicionarItemAvaliacao('Projeto / Lab', 'Projeto')}
@@ -1013,15 +1217,15 @@ export default function DashboardPage({
 
                         <div className="sm:col-span-2">
                           <label className="text-[10px] font-bold uppercase theme-text-secondary block">
-                            Nota (0-10)
+                            Nota (0-100)
                           </label>
                           <input
                             type="number"
-                            step="0.1"
+                            step="0.5"
                             min={0}
                             max={100}
                             disabled={!av.realizada}
-                            placeholder={av.realizada ? 'Ex: 8.5' : '—'}
+                            placeholder={av.realizada ? 'Ex: 85' : '—'}
                             value={av.realizada ? av.nota : ''}
                             onChange={(e) => atualizarItemAvaliacao(idx, 'nota', e.target.value)}
                             className="w-full theme-muted border rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-45"
@@ -1048,7 +1252,7 @@ export default function DashboardPage({
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end pt-1">
                 <div className="sm:col-span-4">
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold">Nota Atual / Final (0 a 10)</label>
+                    <label className="text-xs font-bold">Nota Atual / Final (0 a 100)</label>
                     {mediaCalculadaModal !== null && (
                       <button
                         type="button"
@@ -1061,13 +1265,13 @@ export default function DashboardPage({
                         }
                         className="text-[11px] font-bold theme-accent-text hover:underline cursor-pointer"
                       >
-                        Usar média ({mediaCalculadaModal.toFixed(1)})
+                        Usar média ({mediaCalculadaModal.toFixed(0)})
                       </button>
                     )}
                   </div>
                   <input
                     type="number"
-                    step="0.1"
+                    step="0.5"
                     min={0}
                     max={100}
                     value={
@@ -1178,17 +1382,7 @@ export default function DashboardPage({
                     max={100}
                     value={horasForm.crs}
                     onChange={(e) => setHorasForm((p) => ({ ...p, crs: e.target.value }))}
-                    className="w-24 theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold text-center"
-                  />
-                  {aulas.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={calcularCrsPelasDisciplinas}
-                      className="px-3 py-2 rounded-xl text-xs font-bold theme-badge-soft hover:opacity-90 cursor-pointer"
-                    >
-                      Calcular pelas notas
-                    </button>
-                  )}
+                    className="w-24 theme-surface border rounded-xl px-3 py-2 text-sm font-extrabold text-center"/>
                 </div>
               </div>
 
@@ -1213,16 +1407,11 @@ export default function DashboardPage({
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold theme-text-secondary block mb-0.5">
-                      Meta Exigida (h)
+                      Meta Oficial Inatel
                     </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={horasForm.meta_ac}
-                      onChange={(e) => setHorasForm((p) => ({ ...p, meta_ac: e.target.value }))}
-                      className="w-full theme-surface border rounded-lg px-3 py-1.5 text-xs"
-                    />
+                    <span className="w-full inline-block theme-surface border rounded-lg px-3 py-1.5 text-xs font-bold text-center">
+                      {metasCalculadas.ac}h (Geral)
+                    </span>
                   </div>
                 </div>
 
@@ -1245,16 +1434,11 @@ export default function DashboardPage({
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold theme-text-secondary block mb-0.5">
-                      Meta Exigida (h)
+                      Meta Oficial Inatel
                     </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={horasForm.meta_cp}
-                      onChange={(e) => setHorasForm((p) => ({ ...p, meta_cp: e.target.value }))}
-                      className="w-full theme-surface border rounded-lg px-3 py-1.5 text-xs"
-                    />
+                    <span className="w-full inline-block theme-surface border rounded-lg px-3 py-1.5 text-xs font-bold text-center">
+                      {metasCalculadas.cp}h ({usuario?.curso || 'Curso'})
+                    </span>
                   </div>
                 </div>
 
@@ -1279,18 +1463,11 @@ export default function DashboardPage({
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold theme-text-secondary block mb-0.5">
-                      Meta Exigida (h)
+                      Meta Oficial Inatel
                     </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={horasForm.meta_trilha}
-                      onChange={(e) =>
-                        setHorasForm((p) => ({ ...p, meta_trilha: e.target.value }))
-                      }
-                      className="w-full theme-surface border rounded-lg px-3 py-1.5 text-xs"
-                    />
+                    <span className="w-full inline-block theme-surface border rounded-lg px-3 py-1.5 text-xs font-bold text-center">
+                      {metasCalculadas.trilha}h ({usuario?.curso || 'Curso'})
+                    </span>
                   </div>
                 </div>
               </div>

@@ -14,6 +14,7 @@ from auth import (
     hash_password,
     verify_password,
 )
+from curriculo_inatel import obter_metas_por_curso
 from database import close_database, get_db, get_db_status, init_database
 from linkedin_service import coletar_e_analisar_perfil_linkedin, coletar_vagas_linkedin
 from news_service import chave_ordenacao_noticia, sincronizar_noticias_no_banco
@@ -189,6 +190,11 @@ async def obter_sessao_atual(current_user: Usuario = Depends(get_current_user)):
 # ==========================================
 @app.get("/api/usuario", response_model=UsuarioOut)
 async def obter_usuario(current_user: Usuario = Depends(get_current_user)):
+    metas = obter_metas_por_curso(current_user.curso)
+    current_user.meta_ac = metas["ac"]
+    current_user.meta_horas = metas["ac"]
+    current_user.meta_cp = metas["cp"]
+    current_user.meta_trilha = metas["trilha"]
     return current_user
 
 
@@ -246,10 +252,13 @@ async def atualizar_usuario(
     ):
         update_fields["horas_ac"] = update_fields["horas_complementares"]
 
-    if "meta_ac" in update_fields and update_fields["meta_ac"] is not None:
-        update_fields["meta_horas"] = update_fields["meta_ac"]
-    elif "meta_horas" in update_fields and update_fields["meta_horas"] is not None:
-        update_fields["meta_ac"] = update_fields["meta_horas"]
+    # As metas curriculares são estritas e oficiais do Inatel pelo curso
+    curso_final = update_fields.get("curso") or current_user.curso
+    metas_oficiais = obter_metas_por_curso(curso_final)
+    update_fields["meta_ac"] = metas_oficiais["ac"]  # sempre 200h para qualquer curso
+    update_fields["meta_horas"] = metas_oficiais["ac"]
+    update_fields["meta_cp"] = metas_oficiais["cp"]
+    update_fields["meta_trilha"] = metas_oficiais["trilha"]
 
     for campo, valor in update_fields.items():
         if valor is not None:
@@ -297,13 +306,39 @@ async def alterar_senha_usuario(
 ORDEM_DIAS_SEMANA = {"seg": 1, "ter": 2, "qua": 3, "qui": 4, "sex": 5, "sab": 6}
 
 
-def _normalizar_nota_0_a_10(valor: float | None) -> float | None:
+def _validar_dias(dia_str: str) -> str:
+    partes = [p.strip().lower()[:3] for p in dia_str.replace("/", ",").split(",") if p.strip()]
+    if not partes:
+        raise HTTPException(
+            status_code=400,
+            detail="Dia inválido. Use seg, ter, qua, qui, sex ou sab.",
+        )
+    for p in partes:
+        if p not in ORDEM_DIAS_SEMANA:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dia '{p}' inválido. Use seg, ter, qua, qui, sex ou sab.",
+            )
+    return ", ".join(partes)
+
+
+def _primeiro_dia_ordem(dia_str: str | None) -> int:
+    if not dia_str:
+        return 99
+    partes = [p.strip().lower()[:3] for p in dia_str.replace("/", ",").split(",") if p.strip()]
+    if not partes:
+        return 99
+    return min(ORDEM_DIAS_SEMANA.get(p, 99) for p in partes)
+
+
+def _normalizar_nota_0_a_100(valor: float | None) -> float | None:
     if valor is None:
         return None
     v = float(valor)
-    if v > 10.0:
-        v = v / 10.0
-    return round(max(0.0, min(10.0, v)), 1)
+    # Se valor foi enviado na escala antiga 0..10 (> 0 e <= 10.0), converte para 0..100
+    if 0.0 < v <= 10.0:
+        v = v * 10.0
+    return round(max(0.0, min(100.0, v)), 1)
 
 
 def _carregar_avaliacoes_aula(aula: Aula) -> list[AvaliacaoAulaItem]:
@@ -323,7 +358,7 @@ def _carregar_avaliacoes_aula(aula: Aula) -> list[AvaliacaoAulaItem]:
                     tipo=str(item.get("tipo") or "Prova"),
                     data=str(item.get("data") or ""),
                     realizada=bool(item.get("realizada", False)),
-                    nota=_normalizar_nota_0_a_10(nota_val) if nota_val is not None else None,
+                    nota=_normalizar_nota_0_a_100(nota_val) if nota_val is not None else None,
                     peso=float(item.get("peso") or 1.0),
                 )
             )
@@ -363,7 +398,7 @@ def _preparar_avaliacoes_e_media(
     proxima_data_pendente = ""
 
     for idx, av in enumerate(avaliacoes):
-        nota_norm = _normalizar_nota_0_a_10(av.nota) if av.nota is not None else None
+        nota_norm = _normalizar_nota_0_a_100(av.nota) if av.nota is not None else None
         peso_norm = float(av.peso or 1.0)
         realizada_flag = bool(av.realizada)
         if realizada_flag and nota_norm is not None:
@@ -384,7 +419,7 @@ def _preparar_avaliacoes_e_media(
             }
         )
 
-    nota_final = _normalizar_nota_0_a_10(nota_manual) if nota_manual is not None else 0.0
+    nota_final = _normalizar_nota_0_a_100(nota_manual) if nota_manual is not None else 0.0
     if calcular_automatica and soma_pesos > 0:
         nota_final = round(soma_ponderada / soma_pesos, 1)
 
@@ -402,13 +437,14 @@ async def listar_aulas(
     if current_user is not None:
         stmt = stmt.where(Aula.usuario_id == current_user.id)
     if dia and dia.lower().strip() != "todas":
-        stmt = stmt.where(Aula.dia == dia.lower().strip())
+        dia_filtro = dia.lower().strip()[:3]
+        stmt = stmt.where(Aula.dia.ilike(f"%{dia_filtro}%"))
 
     res = await db.execute(stmt)
     lista = list(res.scalars().all())
     lista.sort(
         key=lambda a: (
-            ORDEM_DIAS_SEMANA.get((a.dia or "").lower(), 99),
+            _primeiro_dia_ordem(a.dia),
             a.horario or "",
             a.id,
         )
@@ -422,12 +458,7 @@ async def criar_aula(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    dia_norm = dados.dia.lower().strip()
-    if dia_norm not in ORDEM_DIAS_SEMANA:
-        raise HTTPException(
-            status_code=400,
-            detail="Dia inválido. Use seg, ter, qua, qui, sex ou sab.",
-        )
+    dia_norm = _validar_dias(dados.dia)
 
     av_json, nota_calc, prova_dt = _preparar_avaliacoes_e_media(
         avaliacoes=dados.avaliacoes,
@@ -480,13 +511,7 @@ async def atualizar_aula(
     if dados.professor is not None:
         aula.professor = dados.professor.strip()
     if dados.dia is not None:
-        dia_norm = dados.dia.lower().strip()
-        if dia_norm not in ORDEM_DIAS_SEMANA:
-            raise HTTPException(
-                status_code=400,
-                detail="Dia inválido. Use seg, ter, qua, qui, sex ou sab.",
-            )
-        aula.dia = dia_norm
+        aula.dia = _validar_dias(dados.dia)
     if dados.horario is not None:
         aula.horario = dados.horario.strip()
     if dados.local is not None:

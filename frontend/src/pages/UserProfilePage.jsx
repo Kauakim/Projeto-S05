@@ -4,6 +4,7 @@ import logoQuadrada from '@assets/images/Logo INATEL.png';
 import Icon from '../components/Icon';
 import LinkedInAnalyzerSection from '../components/LinkedInAnalyzerSection';
 import { api } from '../services/api';
+import { obterMetasPorCurso } from '../utils/metasInatel';
 
 const CURSOS_INATEL = [
   'Engenharia de Software',
@@ -57,11 +58,11 @@ export default function UserProfilePage({
     areas_interesse: '',
     crs: 86.4,
     horas_ac: 112,
-    meta_ac: 160,
+    meta_ac: 200,
     horas_cp: 28,
     meta_cp: 40,
-    horas_trilha: 80,
-    meta_trilha: 120,
+    horas_trilha: 45,
+    meta_trilha: 60,
   });
 
   const [senhaForm, setSenhaForm] = useState({
@@ -72,6 +73,7 @@ export default function UserProfilePage({
 
   useEffect(() => {
     if (usuario) {
+      const metas = obterMetasPorCurso(usuario.curso);
       setForm({
         nome: usuario.nome || '',
         matricula: usuario.matricula ?? '',
@@ -85,11 +87,11 @@ export default function UserProfilePage({
         areas_interesse: usuario.areas_interesse || '',
         crs: usuario.crs ?? 86.4,
         horas_ac: usuario.horas_ac ?? usuario.horas_complementares ?? 0,
-        meta_ac: usuario.meta_ac ?? usuario.meta_horas ?? 160,
+        meta_ac: metas.ac,
         horas_cp: usuario.horas_cp ?? 0,
-        meta_cp: usuario.meta_cp ?? 40,
+        meta_cp: metas.cp,
         horas_trilha: usuario.horas_trilha ?? 0,
-        meta_trilha: usuario.meta_trilha ?? 120,
+        meta_trilha: metas.trilha,
       });
     }
   }, [usuario]);
@@ -101,12 +103,14 @@ export default function UserProfilePage({
   }, [aulas]);
 
   const progressoPilares = useMemo(() => {
+    const cursoAtual = usuario?.curso || form.curso;
+    const metas = obterMetasPorCurso(cursoAtual);
     const acAtual = usuario?.horas_ac ?? usuario?.horas_complementares ?? 0;
-    const acMeta = Math.max(1, usuario?.meta_ac ?? usuario?.meta_horas ?? 160);
+    const acMeta = metas.ac; // sempre 200h para qualquer curso
     const cpAtual = usuario?.horas_cp ?? 0;
-    const cpMeta = Math.max(1, usuario?.meta_cp ?? 40);
+    const cpMeta = metas.cp;
     const trilhaAtual = usuario?.horas_trilha ?? 0;
-    const trilhaMeta = Math.max(1, usuario?.meta_trilha ?? 120);
+    const trilhaMeta = metas.trilha;
 
     return {
       ac: {
@@ -125,7 +129,7 @@ export default function UserProfilePage({
         pct: Math.min(100, Math.round((trilhaAtual / trilhaMeta) * 100)),
       },
     };
-  }, [usuario]);
+  }, [usuario, form.curso]);
 
   const forcaNovaSenha = useMemo(() => {
     const s = senhaForm.nova_senha;
@@ -151,17 +155,18 @@ export default function UserProfilePage({
       return;
     }
     try {
+      const metas = obterMetasPorCurso(form.curso);
       const atualizado = await api.updateUsuario({
         ...form,
         matricula: matNumero,
         periodo: Number(form.periodo),
         crs: Number(form.crs),
         horas_ac: Math.max(0, Number(form.horas_ac)),
-        meta_ac: Math.max(1, Number(form.meta_ac)),
+        meta_ac: metas.ac,
         horas_cp: Math.max(0, Number(form.horas_cp)),
-        meta_cp: Math.max(1, Number(form.meta_cp)),
+        meta_cp: metas.cp,
         horas_trilha: Math.max(0, Number(form.horas_trilha)),
-        meta_trilha: Math.max(1, Number(form.meta_trilha)),
+        meta_trilha: metas.trilha,
       });
       onUsuarioAtualizado(atualizado);
       onNotify('Dados acadêmicos, horas e perfil atualizados com sucesso!');
@@ -176,17 +181,18 @@ export default function UserProfilePage({
     e.preventDefault();
     setSalvandoDados(true);
     try {
+      const metas = obterMetasPorCurso(form.curso);
       const atualizado = await api.updateUsuario({
         crs: Number(form.crs),
         horas_ac: Math.max(0, Number(form.horas_ac)),
-        meta_ac: Math.max(1, Number(form.meta_ac)),
+        meta_ac: metas.ac,
         horas_cp: Math.max(0, Number(form.horas_cp)),
-        meta_cp: Math.max(1, Number(form.meta_cp)),
+        meta_cp: metas.cp,
         horas_trilha: Math.max(0, Number(form.horas_trilha)),
-        meta_trilha: Math.max(1, Number(form.meta_trilha)),
+        meta_trilha: metas.trilha,
       });
       onUsuarioAtualizado(atualizado);
-      onNotify('Horas de AC, CP, Trilha, metas e CRS atualizados!');
+      onNotify('Horas validadas de AC, CP, Trilha e CRS atualizados!');
     } catch (err) {
       onNotify(err.message || 'Erro ao salvar horas validadas.', 'error');
     } finally {
@@ -569,16 +575,11 @@ export default function UserProfilePage({
                     </div>
                     <div>
                       <label className="text-[11px] font-bold theme-text-secondary block mb-1">
-                        Meta (h)
+                        Meta Oficial
                       </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={form.meta_ac}
-                        onChange={(e) => setForm((p) => ({ ...p, meta_ac: e.target.value }))}
-                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
-                      />
+                      <span className="w-full inline-block theme-surface border rounded-xl px-3 py-2 text-sm font-bold text-center">
+                        200h
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -607,16 +608,11 @@ export default function UserProfilePage({
                     </div>
                     <div>
                       <label className="text-[11px] font-bold theme-text-secondary block mb-1">
-                        Meta (h)
+                        Meta Oficial
                       </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={form.meta_cp}
-                        onChange={(e) => setForm((p) => ({ ...p, meta_cp: e.target.value }))}
-                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
-                      />
+                      <span className="w-full inline-block theme-surface border rounded-xl px-3 py-2 text-sm font-bold text-center">
+                        {progressoPilares.cp.meta}h
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -645,16 +641,11 @@ export default function UserProfilePage({
                     </div>
                     <div>
                       <label className="text-[11px] font-bold theme-text-secondary block mb-1">
-                        Meta (h)
+                        Meta Oficial
                       </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={form.meta_trilha}
-                        onChange={(e) => setForm((p) => ({ ...p, meta_trilha: e.target.value }))}
-                        className="w-full theme-surface border rounded-xl px-3 py-2 text-sm"
-                      />
+                      <span className="w-full inline-block theme-surface border rounded-xl px-3 py-2 text-sm font-bold text-center">
+                        {progressoPilares.trilha.meta}h
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -663,20 +654,6 @@ export default function UserProfilePage({
                 <div className="theme-muted border rounded-2xl p-4 space-y-3 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold uppercase">CRS</span>
-                    {aulas.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((p) => ({
-                            ...p,
-                            crs: Math.round(mediaDisciplinasSemestre * 10 * 10) / 10,
-                          }))
-                        }
-                        className="text-[11px] font-bold theme-accent-text hover:underline cursor-pointer"
-                      >
-                        Usar notas ({(mediaDisciplinasSemestre * 10).toFixed(1)}%)
-                      </button>
-                    )}
                   </div>
                   <div>
                     <label className="text-[11px] font-bold theme-text-secondary block mb-1">
@@ -789,7 +766,17 @@ export default function UserProfilePage({
                 <label className="text-xs font-bold block mb-1">Curso</label>
                 <select
                   value={form.curso}
-                  onChange={(e) => setForm((p) => ({ ...p, curso: e.target.value }))}
+                  onChange={(e) => {
+                    const novoCurso = e.target.value;
+                    const novasMetas = obterMetasPorCurso(novoCurso);
+                    setForm((p) => ({
+                      ...p,
+                      curso: novoCurso,
+                      meta_ac: novasMetas.ac,
+                      meta_cp: novasMetas.cp,
+                      meta_trilha: novasMetas.trilha,
+                    }));
+                  }}
                   className="w-full theme-muted border rounded-xl px-3 py-2.5 text-sm"
                 >
                   {CURSOS_INATEL.map((c) => (

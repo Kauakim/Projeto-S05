@@ -135,12 +135,12 @@ class AulaCreate(BaseModel):
     turma: str = Field(default="A", min_length=1, max_length=30)
     disciplina: str = Field(..., min_length=2, max_length=160)
     professor: str = Field(..., min_length=2, max_length=120)
-    dia: str = Field(..., min_length=3, max_length=10)
-    horario: str = Field(..., min_length=3, max_length=30)
-    local: str = Field(..., min_length=1, max_length=50)
+    dia: str = Field(..., min_length=2, max_length=100)
+    horario: str = Field(..., min_length=2, max_length=160)
+    local: str = Field(..., min_length=1, max_length=80)
     prova_alert: bool = False
     prova_data: str = ""
-    frequencia: str = "00/25"
+    frequencia: str = ""
     nota: float = Field(default=0.0, ge=0, le=100)
     calcular_nota_automatica: bool = False
     avaliacoes: list[AvaliacaoAulaItem] = []
@@ -151,9 +151,9 @@ class AulaUpdate(BaseModel):
     turma: str | None = Field(default=None, min_length=1, max_length=30)
     disciplina: str | None = Field(default=None, min_length=2, max_length=160)
     professor: str | None = Field(default=None, min_length=2, max_length=120)
-    dia: str | None = Field(default=None, min_length=3, max_length=10)
-    horario: str | None = Field(default=None, min_length=3, max_length=30)
-    local: str | None = Field(default=None, min_length=1, max_length=50)
+    dia: str | None = Field(default=None, min_length=2, max_length=100)
+    horario: str | None = Field(default=None, min_length=2, max_length=160)
+    local: str | None = Field(default=None, min_length=1, max_length=80)
     prova_alert: bool | None = None
     prova_data: str | None = None
     frequencia: str | None = None

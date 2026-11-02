@@ -90,23 +90,9 @@ export default function LinkedInJobsSection({
               <Icon name="link" className="w-5 h-5 theme-accent-text" />
               Busca em Tempo Real no LinkedIn (de acordo com sua Área)
             </h2>
-            <p className="text-xs sm:text-sm theme-text-secondary">
-              Coleta vagas reais no LinkedIn via <code className="text-xs">python-jobspy</code>,
-              calcula o <strong>Match %</strong> com suas skills e armazena tudo no banco de dados.
-            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {vagasLinkedIn.length > 0 && (
-              <button
-                type="button"
-                onClick={handleExportarVagasJson}
-                className="px-3 py-2 rounded-xl text-xs font-bold theme-muted border flex items-center gap-1.5 hover:opacity-85 cursor-pointer"
-              >
-                <Icon name="download" className="w-3.5 h-3.5" />
-                <span>JSON ({vagasLinkedIn.length})</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={onIrParaAnalisePerfil}
